@@ -157,6 +157,11 @@ body.skaerm #skaermTop{display:grid;grid-template-columns:1fr 1fr;gap:12px;margi
     </div>
     <div class="add"><input type="search" id="frysSoeg" placeholder="Søg i fryseren …"></div>
     <div id="skuffer"></div>
+    <div class="card hidden" id="fjernetKort">
+      <div class="sekhead"><h2>Taget ud for nylig</h2><button class="btn small" id="fjernetBtn">Vis</button></div>
+      <p class="muted" style="margin:6px 0 0">Har du taget noget ud ved en fejl, kan du lægge det tilbage her.</p>
+      <div id="fjernetListe" class="hidden"></div>
+    </div>
     <div class="card hidden" id="importKort">
       <h2>Fryseren er tom</h2>
       <p class="muted">Hent varerne fra dine fryserlister i Home Assistant, eller opret skuffer under ⚙︎.</p>
@@ -191,7 +196,10 @@ body.skaerm #skaermTop{display:grid;grid-template-columns:1fr 1fr;gap:12px;margi
   function persist(){ try{ localStorage.setItem(DATAKEY,JSON.stringify(db)); }catch(e){ toast("Telefonen kunne ikke gemme"); } }
   const alle=kind=>Object.values(db.records).filter(r=>r&&!r.deleted&&r.kind===kind);
   function put(r){ const prev=db.records[r.id]; r.updated=Math.max(Date.now(),prev?(prev.updated||0)+1:0); db.records[r.id]=r; if(!db.dirty.includes(r.id)) db.dirty.push(r.id); persist(); render(); planSync(800); }
-  function del(id){ const prev=db.records[id]; if(!prev) return; put({id,kind:prev.kind,deleted:true}); }
+  function del(id){ const prev=db.records[id]; if(!prev) return;
+    // Fryservarer gemmes med navn og antal, så de kan lægges tilbage, hvis det var en fejl.
+    if(prev.kind==="frys") put(Object.assign({},prev,{deleted:true,slettet:Date.now()}));
+    else put({id,kind:prev.kind,deleted:true}); }
   const get=id=>{ const r=db.records[id]; return r&&!r.deleted?Object.assign({},r):null; };
 
   // --- login (samme metode som de andre apps) ---
@@ -233,7 +241,7 @@ body.skaerm #skaermTop{display:grid;grid-template-columns:1fr 1fr;gap:12px;margi
   async function api(path,opts={},retried){
     const t=await getToken(retried);
     if(!t){ const e=new Error("login"); e.login=true; throw e; }
-    const r=await fetch("/api/handleseddel/"+path,Object.assign({},opts,{headers:Object.assign({},opts.headers||{},{Authorization:"Bearer "+t})}));
+    const r=await fetch(path.startsWith("/")?path:"/api/handleseddel/"+path,Object.assign({},opts,{headers:Object.assign({},opts.headers||{},{Authorization:"Bearer "+t})}));
     if(r.status===401&&!retried) return api(path,opts,true);
     if(r.status===401){ authSet(null); const e=new Error("login"); e.login=true; throw e; }
     if(!r.ok){ const e=new Error("server "+r.status); throw e; }
@@ -450,6 +458,7 @@ body.skaerm #skaermTop{display:grid;grid-template-columns:1fr 1fr;gap:12px;margi
     // Bevar fokus i søgefeltet / ny-vare-formularen
     const fokus=document.activeElement&&document.activeElement.closest&&document.activeElement.closest(".nyfrys");
     if(!fokus) $("skuffer").innerHTML=html;
+    renderFjernet();
     const n=fr.filter(f=>(f.antal||0)>0).length; const t=$("talFryser"); t.textContent=n; t.classList.toggle("hidden",!n);
   }
   $("frysSoeg").oninput=renderFryser;
@@ -600,6 +609,62 @@ body.skaerm #skaermTop{display:grid;grid-template-columns:1fr 1fr;gap:12px;margi
   }
   $("mangelForm").onsubmit=e=>{ e.preventDefault(); const n=$("mangelInput").value.trim(); if(!n) return; tilfoejVare(n); $("mangelInput").value=""; $("mangelInput").blur(); toast(n+" sat på sedlen"); };
 
+  // ---------- taget ud for nylig (fortryd) ----------
+  let visFjernet=false;
+  function fjernede(){
+    const graense=Date.now()-60*24*3600*1000;
+    return Object.values(db.records).filter(r=>r&&r.kind==="frys"&&r.deleted&&r.navn&&(r.slettet||r.updated||0)>graense)
+      .sort((a,b)=>(b.slettet||b.updated||0)-(a.slettet||a.updated||0)).slice(0,40);
+  }
+  function renderFjernet(){
+    const l=fjernede(); $("fjernetKort").classList.toggle("hidden",!l.length);
+    $("fjernetBtn").textContent=visFjernet?"Skjul":"Vis ("+l.length+")";
+    $("fjernetListe").classList.toggle("hidden",!visFjernet);
+    if(!visFjernet) return;
+    $("fjernetListe").innerHTML=l.map(r=>{ const sk=get(r.skuffe); const d=new Date(r.slettet||r.updated);
+      return '<div class="fvare"><div class="navn">'+esc(r.navn)+'<div class="muted">'+esc(tal(r.antal||1))+" "+esc(flertal(r.enhed,r.antal||1))+(sk?" · "+esc(sk.navn):"")+" · taget ud "+esc(d.toLocaleDateString("da-DK",{weekday:"short",day:"numeric",month:"short"}))+'</div></div>'+
+        '<button class="btn small" data-tilbage="'+esc(r.id)+'">Læg tilbage</button></div>'; }).join("");
+  }
+  $("fjernetBtn").onclick=()=>{ visFjernet=!visFjernet; renderFjernet(); };
+  document.addEventListener("click",e=>{
+    const b=e.target.closest("[data-tilbage]"); if(!b) return;
+    const r=db.records[b.dataset.tilbage]; if(!r) return;
+    const ny=Object.assign({},r); delete ny.deleted; delete ny.slettet;
+    if(!(ny.antal>0)) ny.antal=1;
+    if(!get(ny.skuffe)){ const s0=skuffer()[0]; if(s0) ny.skuffe=s0.id; }
+    put(ny); toast(ny.navn+" er lagt tilbage i fryseren");
+  });
+  // Varer, der blev taget ud før "fortryd" fandtes, mangler navn. Navnet hentes fra Home Assistants fryserlister.
+  async function hentNavneTilFjernede(){
+    const mangler=Object.values(db.records).filter(r=>r&&r.kind==="frys"&&r.deleted&&!r.navn&&/^f-/.test(r.id));
+    if(!mangler.length) return;
+    try{
+      const stater=await api("/api/states");
+      const lister=stater.filter(x=>x.entity_id.startsWith("todo.")&&/fryser/i.test((x.attributes&&x.attributes.friendly_name)||""));
+      let fundet=0;
+      for(const l of lister){
+        const svar=await api("/api/services/todo/get_items?return_response",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({entity_id:l.entity_id})});
+        const items=((svar.service_response||{})[l.entity_id]||{}).items||[];
+        const skId=("sk-"+l.entity_id.split(".")[1].replace(/[^A-Za-z0-9_.:-]/g,"")).slice(0,120);
+        for(const it of items){
+          const id=("f-"+String(it.uid||"").replace(/[^A-Za-z0-9_.:-]/g,"")).slice(0,120);
+          const r=db.records[id]; if(!r||!r.deleted||r.navn) continue;
+          const [navn,antal,enhed]=fortolk(it.summary);
+          put({id,kind:"frys",navn,antal,enhed,skuffe:skId,deleted:true,slettet:r.updated||Date.now()}); fundet++;
+        }
+      }
+    }catch(e){}
+  }
+  function fortolk(tekst){
+    const s=String(tekst||"").split(/\s+/).join(" ").trim();
+    const T={stk:"stk","stk.":"stk",pose:"pose",poser:"pose",pakke:"pakke",pakker:"pakke",bakke:"bakke",bakker:"bakke","æske":"æske","æsker":"æske",rulle:"rulle",ruller:"rulle"};
+    let m=s.match(/^(.*?)\s+(?:ca\.?\s+)?(\d+(?:[.,]\d+)?)\s*([A-Za-zæøåÆØÅ.]+)?$/);
+    if(m&&m[1]){ const e=(m[3]||"").toLowerCase(); if(T[e]) return [m[1].trim(),parseFloat(m[2].replace(",",".")),T[e]]; }
+    m=s.match(/^(\d+)\s+([^\d/].*)$/);
+    if(m){ const n=m[2].trim(); return [n.charAt(0).toUpperCase()+n.slice(1),parseFloat(m[1]),"stk"]; }
+    return [s,1,"stk"];
+  }
+
   // ---------- start ----------
   visFane(fane); render();
   (async()=>{
@@ -607,6 +672,7 @@ body.skaerm #skaermTop{display:grid;grid-template-columns:1fr 1fr;gap:12px;margi
     await sync();
     if(HA && !skuffer().length && localStorage.getItem("hs_importeret")!=="1" && syncState.status==="ok") await importer(false);
     hentTilbud();
+    if(HA) hentNavneTilFjernede();
   })();
   if("serviceWorker" in navigator&&(location.protocol==="https:"||location.hostname==="localhost")&&HA){ navigator.serviceWorker.register("sw.js").catch(()=>{}); }
 })();
