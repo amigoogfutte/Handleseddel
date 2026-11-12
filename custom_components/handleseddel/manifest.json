@@ -1,0 +1,15 @@
+{
+  "domain": "handleseddel",
+  "name": "Handleseddel",
+  "codeowners": ["@amigoogfutte"],
+  "config_flow": true,
+  "dependencies": ["http", "frontend"],
+  "after_dependencies": ["todo"],
+  "documentation": "https://github.com/amigoogfutte/handleseddel",
+  "integration_type": "service",
+  "iot_class": "cloud_polling",
+  "issue_tracker": "https://github.com/amigoogfutte/handleseddel/issues",
+  "requirements": [],
+  "single_config_entry": true,
+  "version": "0.1.0"
+}

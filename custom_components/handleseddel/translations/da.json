@@ -1,0 +1,13 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Handleseddel",
+        "description": "Fælles handleseddel og fryser for hele husstanden, med tilbud fra Rema 1000, Netto og Brugsen. Appen findes i sidemenuen under Handleseddel."
+      }
+    },
+    "abort": {
+      "single_instance_allowed": "Handleseddel er allerede sat op."
+    }
+  }
+}

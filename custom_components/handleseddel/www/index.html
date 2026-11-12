@@ -1,0 +1,577 @@
+<!DOCTYPE html>
+<html lang="da">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="Handleseddel">
+<meta name="theme-color" content="#F4F5F2">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="icon-180.png">
+<title>Handleseddel</title>
+<style>
+:root{
+  --bg:#F4F5F2; --card:#FFFFFF; --ink:#1B1F1D; --muted:#5A625E; --line:#C9CEC9; --soft:#E6E9E5;
+  --accent:#23577A; --accent-soft:#E5EEF5; --danger:#A3311F; --frost:#E6F1F7; --frost-ink:#1E5874;
+  --rema:#0B3E86; --netto:#8A6A00; --brugsen:#B3261E;
+}
+*{box-sizing:border-box}
+html,body{margin:0;background:var(--bg);color:var(--ink);font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;-webkit-tap-highlight-color:transparent;font-size:16px}
+button,input,select{font:inherit;color:inherit}
+html,body,button,a,input,select,label{touch-action:manipulation}
+.hidden{display:none!important}
+.wrap{max-width:560px;margin:0 auto;padding:calc(12px + env(safe-area-inset-top)) 16px calc(100px + env(safe-area-inset-bottom))}
+header.top{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:8px 0}
+h1{margin:0;font-size:28px;font-weight:700}
+h2{margin:0;font-size:17px;font-weight:650}
+.muted{color:var(--muted);font-size:14px}
+.card{background:var(--card);border-radius:16px;padding:14px 16px;margin-top:12px}
+.iconbtn{width:44px;height:44px;border-radius:22px;border:1px solid var(--line);background:#fff;font-size:20px;display:inline-flex;align-items:center;justify-content:center;cursor:pointer}
+input[type=text],input[type=search],input[type=number],select{width:100%;min-height:48px;border:1px solid var(--line);border-radius:12px;padding:10px 14px;background:#fff;font-size:16px}
+.row{display:flex;gap:8px;align-items:center}
+.row > .grow{flex:1;min-width:0}
+.btn{min-height:48px;border-radius:12px;border:1px solid var(--line);background:#fff;font-weight:600;font-size:15px;padding:0 16px;cursor:pointer}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:#fff}
+.btn.small{min-height:38px;font-size:14px;padding:0 12px}
+.btn.danger{color:var(--danger);border-color:#E3B9B1}
+.btn.link{border:none;background:none;color:var(--accent);padding:0 6px}
+#syncBar{font-size:13px;padding:8px 12px;border-radius:10px;margin-top:4px;cursor:pointer}
+#syncBar.ok{background:transparent;color:var(--muted);padding:2px 0}
+#syncBar.busy{background:var(--soft);color:var(--muted)}
+#syncBar.offline{background:#FFF3E6;color:#6B3A10}
+#syncBar.login,#syncBar.error{background:#FDECEA;color:var(--danger)}
+
+/* Seddel */
+.add{position:sticky;top:0;z-index:4;background:var(--bg);padding:8px 0 4px;margin:0}
+.vare{display:flex;gap:12px;align-items:flex-start;padding:12px 0;border-top:1px solid var(--soft)}
+.vare:first-child{border-top:none}
+.tjek{flex:0 0 auto;width:30px;height:30px;border-radius:15px;border:2px solid var(--line);background:#fff;cursor:pointer;margin-top:1px;display:flex;align-items:center;justify-content:center;font-size:17px;color:#fff}
+.vare.taget .tjek{background:var(--accent);border-color:var(--accent)}
+.vare.taget .navn{text-decoration:line-through;color:var(--muted)}
+.vare .indhold{flex:1;min-width:0;display:flex;flex-direction:column;gap:6px}
+.vare .navn{font-size:17px;font-weight:550;overflow-wrap:anywhere;cursor:pointer;padding-top:3px}
+.info{display:flex;flex-wrap:wrap;gap:6px}
+.pille{font-size:13px;font-weight:600;border-radius:14px;padding:5px 10px;border:1px solid transparent;cursor:pointer;background:var(--soft);color:var(--ink);white-space:nowrap}
+.pille.frys{background:var(--frost);color:var(--frost-ink)}
+.pille.b-rema{background:#E7EEF8;color:var(--rema)}
+.pille.b-netto{background:#FFF6CC;color:var(--netto)}
+.pille.b-brugsen{background:#FBE9E7;color:var(--brugsen)}
+.sekhead{display:flex;justify-content:space-between;align-items:center;gap:8px}
+.tom{padding:20px 4px;text-align:center;color:var(--muted)}
+
+/* Fryser */
+.skuffe h2{display:flex;align-items:center;gap:8px}
+.skuffe h2::before{content:"";width:10px;height:10px;border-radius:50%;background:var(--frost-ink)}
+.fvare{display:flex;align-items:center;gap:10px;padding:8px 0;border-top:1px solid var(--soft)}
+.sekhead + .fvare{border-top:none}
+.fvare .navn{flex:1;min-width:0;overflow-wrap:anywhere;cursor:pointer}
+.fvare .antal{min-width:58px;text-align:center;font-weight:700;font-size:15px}
+.rund{width:42px;height:42px;border-radius:21px;border:1px solid var(--line);background:#fff;font-size:22px;font-weight:600;cursor:pointer;flex:0 0 auto;display:flex;align-items:center;justify-content:center}
+.rund.plus{background:var(--frost);border-color:#C7DEEA;color:var(--frost-ink)}
+.nyfrys{display:flex;gap:8px;margin-top:8px}
+.nyfrys input[type=number]{width:76px;flex:0 0 auto;text-align:center}
+
+/* Faner i bunden */
+nav.tabs{position:fixed;left:0;right:0;bottom:0;z-index:10;display:flex;justify-content:center;gap:8px;padding:8px 16px calc(8px + env(safe-area-inset-bottom));background:rgba(244,245,242,.96);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);border-top:1px solid var(--soft)}
+nav.tabs button{flex:1;max-width:260px;min-height:52px;border:none;border-radius:14px;background:transparent;font-weight:650;font-size:16px;cursor:pointer;color:var(--muted)}
+nav.tabs button[aria-pressed=true]{background:#fff;color:var(--ink);box-shadow:0 1px 3px rgba(0,0,0,.08)}
+nav.tabs .tal{display:inline-block;min-width:22px;padding:1px 6px;margin-left:6px;border-radius:11px;background:var(--accent);color:#fff;font-size:12px}
+
+/* Ark nedefra */
+.skygge{position:fixed;inset:0;background:rgba(0,0,0,.3);z-index:20}
+.ark{position:fixed;left:0;right:0;bottom:0;z-index:21;max-height:86vh;overflow:auto;background:var(--bg);border-radius:20px 20px 0 0;padding:16px 16px calc(20px + env(safe-area-inset-bottom));max-width:600px;margin:0 auto}
+.ark .greb{width:40px;height:5px;border-radius:3px;background:var(--line);margin:0 auto 12px}
+.ark h2{font-size:20px;margin-bottom:8px}
+.ark .felt{display:flex;flex-direction:column;gap:6px;margin-top:12px;font-size:14px;color:var(--muted);font-weight:500}
+.ark .knapper{display:flex;gap:8px;margin-top:16px;flex-wrap:wrap}
+.ark .knapper .btn{flex:1}
+.tilbud{display:flex;gap:12px;align-items:center;background:#fff;border-radius:14px;padding:10px;margin-top:8px}
+.tilbud img{width:64px;height:64px;object-fit:contain;flex:0 0 auto;border-radius:8px;background:#fff}
+.tilbud .t{flex:1;min-width:0;display:flex;flex-direction:column;gap:3px}
+.tilbud .t b{font-size:15px;overflow-wrap:anywhere}
+.tilbud .pris{font-size:18px;font-weight:750;white-space:nowrap}
+.tilbud .butik{font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.03em}
+.c-rema{color:var(--rema)} .c-netto{color:var(--netto)} .c-brugsen{color:var(--brugsen)}
+.toggle{display:flex;justify-content:space-between;align-items:center;padding:12px 0;border-top:1px solid var(--soft);font-size:16px;color:var(--ink)}
+.toggle:first-child{border-top:none}
+.toggle input{width:24px;height:24px}
+#toast{position:fixed;left:50%;transform:translateX(-50%);width:max-content;bottom:calc(84px + env(safe-area-inset-bottom));z-index:30;background:var(--ink);color:#fff;border-radius:14px;padding:12px 14px;font-size:15px;display:flex;gap:12px;align-items:center;max-width:92vw;box-shadow:0 4px 16px rgba(0,0,0,.2)}
+#toast span{flex:1;min-width:0}
+#toast button{white-space:nowrap;flex:0 0 auto;background:none;border:none;color:#9FD0F0;font-weight:700;font-size:15px;cursor:pointer;padding:4px}
+
+/* Fryser-skærm: tablet ved fryseren */
+body.skaerm .wrap{max-width:1280px;padding-bottom:calc(40px + env(safe-area-inset-bottom))}
+body.skaerm nav.tabs{display:none}
+body.skaerm h1{font-size:34px}
+body.skaerm #skuffer{display:grid;grid-template-columns:repeat(auto-fill,minmax(360px,1fr));gap:14px;align-items:start}
+body.skaerm #skuffer .card{margin-top:0}
+body.skaerm .fvare{padding:10px 0}
+body.skaerm .fvare .navn{font-size:19px}
+body.skaerm .fvare .antal{font-size:18px;min-width:72px}
+body.skaerm .rund{width:58px;height:58px;border-radius:29px;font-size:28px}
+body.skaerm .skuffe h2{font-size:21px}
+body.skaerm #toast{bottom:calc(24px + env(safe-area-inset-bottom));font-size:18px;padding:16px 18px}
+body.skaerm #toast button{font-size:18px}
+#skaermTop{display:none}
+body.skaerm #skaermTop{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin:8px 0 14px}
+#skaermTop form{display:flex;gap:8px}
+#skaermTop .ur{font-size:15px;color:var(--muted);align-self:center;text-align:right}
+@media (max-width:700px){ body.skaerm #skaermTop{grid-template-columns:1fr} }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="top">
+    <h1 id="titel">Handleseddel</h1>
+    <button class="iconbtn" id="indstBtn" aria-label="Indstillinger">⚙︎</button>
+  </header>
+  <div id="syncBar" class="busy hidden"></div>
+
+  <!-- SEDDEL -->
+  <section id="v-seddel">
+    <form class="add" id="addForm" autocomplete="off">
+      <div class="row">
+        <input class="grow" type="text" id="addInput" placeholder="Tilføj vare …" list="forslag" enterkeyhint="done">
+        <button class="btn primary" type="submit">Tilføj</button>
+      </div>
+      <datalist id="forslag"></datalist>
+    </form>
+    <div class="card" id="seddelKort"><div id="seddelListe"></div></div>
+    <div class="card hidden" id="kurvKort">
+      <div class="sekhead"><h2 id="kurvTitel">I kurven</h2><button class="btn small" id="rydBtn">Ryd</button></div>
+      <div id="kurvListe"></div>
+    </div>
+    <p class="muted" id="tilbudInfo" style="padding:4px 4px 0"></p>
+  </section>
+
+  <!-- FRYSER -->
+  <section id="v-fryser" class="hidden">
+    <div id="skaermTop">
+      <form id="mangelForm" autocomplete="off"><input type="text" id="mangelInput" placeholder="Mangler noget? Skriv det på sedlen …" list="forslag" style="flex:1"><button class="btn primary">På sedlen</button></form>
+      <div class="ur" id="skaermInfo"></div>
+    </div>
+    <div class="add"><input type="search" id="frysSoeg" placeholder="Søg i fryseren …"></div>
+    <div id="skuffer"></div>
+    <div class="card hidden" id="importKort">
+      <h2>Fryseren er tom</h2>
+      <p class="muted">Hent varerne fra dine fryserlister i Home Assistant, eller opret skuffer under ⚙︎.</p>
+      <button class="btn primary" id="importBtn">Hent fra Home Assistant</button>
+    </div>
+  </section>
+</div>
+
+<nav class="tabs">
+  <button id="tab-seddel" aria-pressed="true">Seddel<span class="tal hidden" id="talSeddel"></span></button>
+  <button id="tab-fryser" aria-pressed="false">Fryser<span class="tal hidden" id="talFryser"></span></button>
+</nav>
+
+<div id="arkLag" class="hidden"><div class="skygge" id="skygge"></div><div class="ark" id="ark"></div></div>
+<div id="toast" class="hidden"></div>
+
+<script>
+(function(){
+  "use strict";
+  const $=id=>document.getElementById(id);
+  const esc=s=>String(s==null?"":s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+  const newId=p=>p+"-"+Date.now().toString(36)+"-"+Math.random().toString(36).slice(2,8);
+  const BUTIKKER={rema:"Rema 1000",netto:"Netto",brugsen:"Brugsen"};
+  const tal=n=>{ const v=Math.round((+n||0)*100)/100; return String(v).replace(".",","); };
+  const kr=n=>n==null?"":(Math.round(n*100)%100? (n.toFixed(2).replace(".",",")) : String(Math.round(n)))+" kr";
+
+  // ---------- lager på enheden + synkronisering med Home Assistant ----------
+  const HA = location.pathname.startsWith("/handle-app/");
+  const DATAKEY="hs_data_v1";
+  let db={records:{},dirty:[]};
+  try{ const o=JSON.parse(localStorage.getItem(DATAKEY)||"null"); if(o&&o.records) db={records:o.records,dirty:Array.isArray(o.dirty)?o.dirty:[]}; }catch(e){}
+  function persist(){ try{ localStorage.setItem(DATAKEY,JSON.stringify(db)); }catch(e){ toast("Telefonen kunne ikke gemme"); } }
+  const alle=kind=>Object.values(db.records).filter(r=>r&&!r.deleted&&r.kind===kind);
+  function put(r){ const prev=db.records[r.id]; r.updated=Math.max(Date.now(),prev?(prev.updated||0)+1:0); db.records[r.id]=r; if(!db.dirty.includes(r.id)) db.dirty.push(r.id); persist(); render(); planSync(800); }
+  function del(id){ const prev=db.records[id]; if(!prev) return; put({id,kind:prev.kind,deleted:true}); }
+  const get=id=>{ const r=db.records[id]; return r&&!r.deleted?Object.assign({},r):null; };
+
+  // --- login (samme metode som de andre apps) ---
+  let inFrame=false; try{ inFrame=window.self!==window.top; }catch(e){ inFrame=true; }
+  const APP_BASE=location.origin+"/handle-app/";
+  const CLIENT_ID=APP_BASE, REDIRECT_URI=APP_BASE+"index.html";
+  const authGet=()=>{ try{ return JSON.parse(localStorage.getItem("hs_auth")||"null"); }catch(e){ return null; } };
+  const authSet=a=>{ try{ a?localStorage.setItem("hs_auth",JSON.stringify(a)):localStorage.removeItem("hs_auth"); }catch(e){} };
+  async function tokenRequest(params){
+    const r=await fetch("/auth/token",{method:"POST",body:new URLSearchParams(params)});
+    if(!r.ok){ const e=new Error("auth "+r.status); e.status=r.status; throw e; }
+    const j=await r.json();
+    return {access_token:j.access_token,refresh_token:j.refresh_token||params.refresh_token,expires:Date.now()+(j.expires_in||1800)*1000,clientId:params.client_id};
+  }
+  async function parentToken(){
+    try{ if(!inFrame) return null; const ha=window.parent.document.querySelector("home-assistant"); const a=ha&&ha.hass&&ha.hass.auth; if(!a) return null; if(a.expired) await a.refreshAccessToken(); return a.accessToken||null; }catch(e){ return null; }
+  }
+  async function getToken(force){
+    const pt=await parentToken(); if(pt) return pt;
+    let a=authGet();
+    if(!a){ try{ const h=JSON.parse(localStorage.getItem("hassTokens")||"null"); if(h&&h.refresh_token&&h.clientId) a={access_token:h.access_token,refresh_token:h.refresh_token,expires:h.expires||0,clientId:h.clientId,borrowed:true}; }catch(e){} }
+    if(!a) return null;
+    if(!force&&a.access_token&&a.expires>Date.now()+30000) return a.access_token;
+    try{ const n=await tokenRequest({grant_type:"refresh_token",refresh_token:a.refresh_token,client_id:a.clientId}); if(!a.borrowed) authSet(n); return n.access_token; }
+    catch(e){ if(e.status===400||e.status===403){ if(!a.borrowed) authSet(null); return null; } throw e; }
+  }
+  function startLogin(){
+    const st=newId("s"); try{ localStorage.setItem("hs_state",st); }catch(e){}
+    location.href="/auth/authorize?response_type=code&client_id="+encodeURIComponent(CLIENT_ID)+"&redirect_uri="+encodeURIComponent(REDIRECT_URI)+"&state="+encodeURIComponent(st);
+  }
+  async function handleLoginReturn(){
+    if(!HA) return;
+    const q=new URLSearchParams(location.search); const code=q.get("code"); if(!code) return;
+    history.replaceState(null,"",location.pathname+location.hash);
+    let expected=null; try{ expected=localStorage.getItem("hs_state"); localStorage.removeItem("hs_state"); }catch(e){}
+    if(expected&&q.get("state")!==expected){ toast("Login mislykkedes – prøv igen"); return; }
+    try{ authSet(await tokenRequest({grant_type:"authorization_code",code,client_id:CLIENT_ID})); toast("Logget ind"); }catch(e){ toast("Login mislykkedes – prøv igen"); }
+  }
+  async function api(path,opts={},retried){
+    const t=await getToken(retried);
+    if(!t){ const e=new Error("login"); e.login=true; throw e; }
+    const r=await fetch("/api/handleseddel/"+path,Object.assign({},opts,{headers:Object.assign({},opts.headers||{},{Authorization:"Bearer "+t})}));
+    if(r.status===401&&!retried) return api(path,opts,true);
+    if(r.status===401){ authSet(null); const e=new Error("login"); e.login=true; throw e; }
+    if(!r.ok){ const e=new Error("server "+r.status); throw e; }
+    return r.json();
+  }
+
+  // --- synkronisering ---
+  let syncState={status:HA?"busy":"off",last:+(localStorage.getItem("hs_lastSync")||0)};
+  let syncing=false, igen=false, syncTimer=null;
+  function drawSync(){
+    const b=$("syncBar"); if(!HA){ b.classList.add("hidden"); return; }
+    const n=db.dirty.length;
+    const t=syncState.last?new Date(syncState.last).toLocaleTimeString("da-DK",{hour:"2-digit",minute:"2-digit"}):"";
+    let cls="ok",txt="Delt med alle enheder · "+t;
+    if(syncState.status==="busy"){ cls="busy"; txt="Synkroniserer …"; }
+    else if(syncState.status==="login"){ cls="login"; txt="Ikke logget ind – tryk her for at logge ind"; }
+    else if(syncState.status==="offline"){ cls="offline"; txt="Ingen forbindelse – gemmes på telefonen"+(n?" ("+n+" venter)":""); }
+    else if(syncState.status==="error"){ cls="error"; txt="Kunne ikke synkronisere – tryk for at prøve igen"; }
+    else if(n){ cls="busy"; txt=n+" ændring(er) sendes …"; }
+    b.className=cls; b.textContent=txt;
+  }
+  async function sync(){
+    if(!HA) return;
+    if(syncing){ igen=true; return; }
+    syncing=true; if(syncState.status!=="ok") { syncState.status="busy"; drawSync(); }
+    try{
+      const poster=db.dirty.map(id=>db.records[id]).filter(Boolean);
+      const sendt={}; poster.forEach(p=>{ sendt[p.id]=p.updated||0; });
+      const j=await api("sync",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({poster})});
+      flet(j.poster);
+      // behold kun ændringer, der er lavet mens vi ventede på svar
+      db.dirty=db.dirty.filter(id=>!(id in sendt)||((db.records[id]||{}).updated||0)>sendt[id]);
+      persist();
+      syncState={status:"ok",last:Date.now()}; try{ localStorage.setItem("hs_lastSync",String(syncState.last)); }catch(e){}
+    }catch(e){
+      syncState.status=e.login?"login":(navigator.onLine===false||e instanceof TypeError?"offline":"error");
+    }finally{
+      syncing=false; render();
+      if(igen){ igen=false; planSync(300); }
+    }
+  }
+  function flet(liste){
+    if(!Array.isArray(liste)) return;
+    for(const r of liste){ if(!r||!r.id) continue; const cur=db.records[r.id]; if(!cur||(r.updated||0)>(cur.updated||0)) db.records[r.id]=r; }
+  }
+  function planSync(ms){ clearTimeout(syncTimer); syncTimer=setTimeout(sync,ms); }
+  $("syncBar").onclick=()=>{ if(syncState.status==="login") startLogin(); else sync(); };
+  document.addEventListener("visibilitychange",()=>{ if(!document.hidden){ sync(); hentTilbud(); } });
+  window.addEventListener("online",()=>sync());
+  setInterval(()=>{ if(!document.hidden) sync(); },15000);
+
+  // ---------- tilbud ----------
+  let tilbud=[]; let tilbudHentet=0; let tilbudFejl=[];
+  try{ const t=JSON.parse(localStorage.getItem("hs_tilbud")||"null"); if(t){ tilbud=t.tilbud||[]; tilbudHentet=t.hentet||0; } }catch(e){}
+  let tilbudSidst=0;
+  async function hentTilbud(frisk){
+    if(!HA) return;
+    if(!frisk&&Date.now()-tilbudSidst<10*60*1000) return;
+    tilbudSidst=Date.now();
+    try{
+      const j=await api("tilbud"+(frisk?"?frisk=1":""));
+      tilbud=Array.isArray(j.tilbud)?j.tilbud:[]; tilbudHentet=(j.hentet||0)*1000; tilbudFejl=j.fejl||[];
+      try{ localStorage.setItem("hs_tilbud",JSON.stringify({tilbud,hentet:tilbudHentet})); }catch(e){}
+      matchCache.clear(); render();
+      if(frisk) toast(tilbudFejl.length?"Kunne ikke hente fra "+tilbudFejl.join(", "):"Tilbud opdateret");
+    }catch(e){ if(frisk) toast("Kunne ikke hente tilbud"); }
+  }
+  function indst(){ return get("indstillinger")||{id:"indstillinger",kind:"indst",butikker:{rema:true,netto:true,brugsen:true}}; }
+
+  // Matcher en vare på sedlen med tilbud: alle ord i varen skal findes i tilbuddets overskrift.
+  const STOP=new Set(["og","eller","med","til","af","i","på","ca","stk","stk.","kg","g","gr","l","ltr","pose","poser","pakke","pakker","x","fx","lidt","nogle","mere","ny","nye","god","gode","1/2","halv"]);
+  const norm=s=>String(s||"").toLowerCase().replace(/[^a-zæøåéü0-9]+/g," ").trim();
+  function ord(s){ return norm(s).split(" ").filter(w=>w&&!STOP.has(w)&&!/^\d+$/.test(w)); }
+  function stamme(w){ return w.length>=6? w.replace(/(erne|ene|er|e|r)$/,""): w; }
+  function passer(tokens,tekst){
+    const ws=norm(tekst).split(" ");
+    return tokens.every(t=> t.length<=3 ? ws.includes(t) : ws.some(w=>w.includes(stamme(t))));
+  }
+  const matchCache=new Map();
+  function tilbudFor(navn){
+    const key=norm(navn); if(matchCache.has(key)) return matchCache.get(key);
+    const tokens=ord(navn); let res=[];
+    if(tokens.length){
+      const nu=Date.now(); const b=indst().butikker||{};
+      res=tilbud.filter(t=>b[t.butik]!==false && (!t.til||Date.parse(t.til.replace(/\+0000$/,"Z"))>nu) &&
+        (passer(tokens,t.titel) || (tokens.length===1&&tokens[0].length>=5&&passer(tokens,t.tekst))));
+      res.sort((a,b)=>(a.pris??1e9)-(b.pris??1e9));
+    }
+    matchCache.set(key,res); return res;
+  }
+  function frysFor(navn){
+    const tokens=ord(navn); if(!tokens.length) return [];
+    return alle("frys").filter(f=>(f.antal||0)>0&&passer(tokens,f.navn));
+  }
+  const dato=s=>{ if(!s) return null; const d=new Date(s.replace(/\+0000$/,"Z")); return isNaN(d)?null:d; };
+  const dagNavn=d=>d.toLocaleDateString("da-DK",{weekday:"short",day:"numeric",month:"numeric"});
+  function periode(t){
+    const fra=dato(t.fra), til=dato(t.til), nu=new Date();
+    if(fra&&fra>nu) return "fra "+dagNavn(fra);
+    return til?"til "+dagNavn(til):"";
+  }
+
+  // ---------- visning ----------
+  let fane=localStorage.getItem("hs_fane")||"seddel";
+  function visFane(f){ fane=f; try{ localStorage.setItem("hs_fane",f); }catch(e){}
+    $("v-seddel").classList.toggle("hidden",f!=="seddel"); $("v-fryser").classList.toggle("hidden",f!=="fryser");
+    $("tab-seddel").setAttribute("aria-pressed",f==="seddel"); $("tab-fryser").setAttribute("aria-pressed",f==="fryser");
+    $("titel").textContent=f==="seddel"?"Handleseddel":"Fryser"; window.scrollTo(0,0); }
+  $("tab-seddel").onclick=()=>visFane("seddel"); $("tab-fryser").onclick=()=>visFane("fryser");
+
+  let render=function(){ drawSync(); renderSeddel(); renderFryser(); };
+
+  function renderSeddel(){
+    const varer=alle("vare");
+    const mangler=varer.filter(v=>!v.taget).sort((a,b)=>(a.oprettet||0)-(b.oprettet||0));
+    const taget=varer.filter(v=>v.taget).sort((a,b)=>(b.tagetTid||0)-(a.tagetTid||0));
+    $("seddelListe").innerHTML=mangler.length?mangler.map(vareHtml).join(""):'<div class="tom">Sedlen er tom. Skriv en vare ovenfor.</div>';
+    $("kurvKort").classList.toggle("hidden",!taget.length);
+    $("kurvTitel").textContent="I kurven ("+taget.length+")";
+    $("kurvListe").innerHTML=taget.map(vareHtml).join("");
+    const t=$("talSeddel"); t.textContent=mangler.length; t.classList.toggle("hidden",!mangler.length);
+    // forslag: tidligere varer + fryservarer
+    const navne=new Set(); varer.forEach(v=>navne.add(v.navn)); alle("frys").forEach(f=>navne.add(f.navn));
+    alle("historik").forEach(h=>navne.add(h.navn));
+    $("forslag").innerHTML=[...navne].sort((a,b)=>a.localeCompare(b,"da")).map(n=>'<option value="'+esc(n)+'">').join("");
+    const b=indst().butikker||{}; const valgte=Object.keys(BUTIKKER).filter(k=>b[k]!==false).map(k=>BUTIKKER[k]);
+    $("tilbudInfo").textContent=HA?(tilbudHentet?"Tilbud fra "+valgte.join(", ")+" · hentet "+new Date(tilbudHentet).toLocaleString("da-DK",{weekday:"short",hour:"2-digit",minute:"2-digit"}):"Henter tilbud …"):"";
+  }
+  function vareHtml(v){
+    let info="";
+    if(!v.taget){
+      const fr=frysFor(v.navn);
+      if(fr.length){ const f=fr[0]; const sk=get(f.skuffe); info+='<span class="pille frys" data-frys="'+esc(v.id)+'">❄︎ Har '+esc(fAntal(f))+(fr.length>1?" +"+(fr.length-1):"")+(sk?" · "+esc(sk.navn):"")+'</span>'; }
+      const tb=tilbudFor(v.navn); const set=new Set();
+      for(const t of tb){ if(set.has(t.butik)) continue; set.add(t.butik);
+        info+='<span class="pille b-'+t.butik+'" data-tilbud="'+esc(v.id)+'">'+esc(BUTIKKER[t.butik])+" "+esc(kr(t.pris))+'</span>'; }
+    }
+    return '<div class="vare'+(v.taget?" taget":"")+'"><button class="tjek" data-tjek="'+esc(v.id)+'" aria-label="Afkryds">'+(v.taget?"✓":"")+'</button>'+
+      '<div class="indhold"><div class="navn" data-ret="'+esc(v.id)+'">'+esc(v.navn)+'</div>'+(info?'<div class="info">'+info+'</div>':"")+'</div></div>';
+  }
+  function flertal(e,n){ if(n===1||!e) return e; return ({pose:"poser",pakke:"pakker",bakke:"bakker","æske":"æsker"})[e]||e; }
+  function fAntal(f){ const n=tal(f.antal); if(!f.enhed) return f.antal===1&&/\d/.test(f.navn)?f.navn:(n+" × "+f.navn); return n+" "+(f.enhed==="pose"&&f.antal!==1?"poser":f.enhed==="pakke"&&f.antal!==1?"pakker":f.enhed)+" "+f.navn; }
+
+  $("addForm").onsubmit=e=>{ e.preventDefault(); const n=$("addInput").value.trim(); if(!n) return; tilfoejVare(n); $("addInput").value=""; };
+  function tilfoejVare(n){
+    const findes=alle("vare").find(v=>!v.taget&&norm(v.navn)===norm(n));
+    if(findes){ toast(n+" står allerede på sedlen"); return; }
+    const gl=alle("vare").find(v=>v.taget&&norm(v.navn)===norm(n));
+    if(gl){ gl.taget=false; gl.oprettet=Date.now(); put(gl); return; }
+    put({id:newId("v"),kind:"vare",navn:n,taget:false,oprettet:Date.now()});
+  }
+  document.addEventListener("click",e=>{
+    const el=e.target.closest("[data-tjek],[data-ret],[data-tilbud],[data-frys],[data-plus],[data-minus],[data-fret],[data-nyfrys]");
+    if(!el) return;
+    if(el.dataset.tjek){ const v=get(el.dataset.tjek); if(!v) return; v.taget=!v.taget; v.tagetTid=Date.now(); put(v); }
+    else if(el.dataset.ret) retVare(el.dataset.ret);
+    else if(el.dataset.tilbud) visTilbud(el.dataset.tilbud);
+    else if(el.dataset.frys) visFrysFor(el.dataset.frys);
+    else if(el.dataset.plus) aendr(el.dataset.plus,1);
+    else if(el.dataset.minus) aendr(el.dataset.minus,-1);
+    else if(el.dataset.fret) retFrys(el.dataset.fret);
+    else if(el.dataset.nyfrys) nyFrysForm(el.dataset.nyfrys);
+  });
+  $("rydBtn").onclick=()=>{ const t=alle("vare").filter(v=>v.taget); t.forEach(v=>{ husk(v.navn); del(v.id); }); toast("Kurven er ryddet",()=>{ t.forEach(v=>{ v.taget=true; put(v); }); }); };
+  function husk(navn){ const id="h-"+norm(navn).replace(/ /g,"_").slice(0,100); if(id.length<4) return; if(!get(id)) put({id,kind:"historik",navn}); }
+
+  // ---------- fryser ----------
+  function skuffer(){ return alle("skuffe").sort((a,b)=>(a.orden||0)-(b.orden||0)); }
+  let aabenNy=null;
+  function renderFryser(){
+    const q=norm($("frysSoeg").value); const sk=skuffer(); const fr=alle("frys");
+    $("importKort").classList.toggle("hidden",!!sk.length||!HA);
+    let html="";
+    for(const s of sk){
+      let items=fr.filter(f=>f.skuffe===s.id);
+      if(q) items=items.filter(f=>norm(f.navn).includes(q));
+      if(q&&!items.length) continue;
+      items.sort((a,b)=>a.navn.localeCompare(b.navn,"da"));
+      html+='<div class="card skuffe"><div class="sekhead"><h2>'+esc(s.navn)+'</h2><span class="muted">'+items.length+(items.length===1?' vare':' varer')+'</span></div>';
+      html+=items.map(f=>'<div class="fvare"><button class="rund" data-minus="'+esc(f.id)+'" aria-label="Tag én ud">−</button>'+
+        '<div class="navn" data-fret="'+esc(f.id)+'">'+esc(f.navn)+'</div><div class="antal">'+esc(tal(f.antal))+(f.enhed?" "+esc(flertal(f.enhed,f.antal)):"")+'</div>'+
+        '<button class="rund plus" data-plus="'+esc(f.id)+'" aria-label="Læg én i">+</button></div>').join("");
+      html+= aabenNy===s.id ? '<form class="nyfrys" data-skuffe="'+esc(s.id)+'"><input type="text" class="grow" name="navn" placeholder="Vare" list="forslag" style="flex:1" required><input type="number" name="antal" value="1" min="0" step="any" inputmode="decimal"><button class="btn primary">Læg i</button></form>'
+        : '<div style="margin-top:6px"><button class="btn link" data-nyfrys="'+esc(s.id)+'">+ Læg vare i '+esc(s.navn.toLowerCase())+'</button></div>';
+      html+='</div>';
+    }
+    if(q&&!html) html='<div class="tom">Ingen varer matcher “'+esc($("frysSoeg").value)+'”.</div>';
+    // Bevar fokus i søgefeltet / ny-vare-formularen
+    const fokus=document.activeElement&&document.activeElement.closest&&document.activeElement.closest(".nyfrys");
+    if(!fokus) $("skuffer").innerHTML=html;
+    const n=fr.filter(f=>(f.antal||0)>0).length; const t=$("talFryser"); t.textContent=n; t.classList.toggle("hidden",!n);
+  }
+  $("frysSoeg").oninput=renderFryser;
+  function nyFrysForm(id){ aabenNy=id; renderFryser(); const f=document.querySelector('.nyfrys input[name=navn]'); if(f) f.focus(); }
+  document.addEventListener("submit",e=>{
+    const f=e.target.closest(".nyfrys"); if(!f) return; e.preventDefault();
+    const navn=f.navn.value.trim(); const antal=parseFloat(String(f.antal.value).replace(",","."))||1; if(!navn) return;
+    const sk=f.dataset.skuffe;
+    const findes=alle("frys").find(x=>x.skuffe===sk&&norm(x.navn)===norm(navn));
+    aabenNy=null; f.remove();
+    if(findes){ findes.antal=(findes.antal||0)+antal; findes.lagtInd=Date.now(); put(findes); }
+    else put({id:newId("f"),kind:"frys",navn,antal,enhed:"",skuffe:sk,lagtInd:Date.now()});
+    toast(navn+" lagt i fryseren");
+  });
+  function aendr(id,d){
+    const f=get(id); if(!f) return;
+    const ny=Math.round(((f.antal||0)+d)*100)/100;
+    if(ny<=0){
+      const gammel=Object.assign({},f); del(id);
+      const paaSeddel=alle("vare").some(v=>!v.taget&&norm(v.navn)===norm(f.navn));
+      toast(f.navn+" er brugt op", paaSeddel?null:()=>{ tilfoejVare(f.navn); toast(f.navn+" sat på sedlen"); }, paaSeddel?null:"Sæt på sedlen", ()=>put(gammel));
+      return;
+    }
+    f.antal=ny; if(d>0) f.lagtInd=Date.now(); put(f);
+  }
+
+  // ---------- ark ----------
+  function aabenArk(html){ $("ark").innerHTML='<div class="greb"></div>'+html; $("arkLag").classList.remove("hidden"); }
+  function lukArk(){ $("arkLag").classList.add("hidden"); $("ark").innerHTML=""; }
+  $("skygge").onclick=lukArk;
+
+  function visTilbud(vid){
+    const v=get(vid); if(!v) return; const tb=tilbudFor(v.navn);
+    aabenArk('<h2>Tilbud på '+esc(v.navn)+'</h2><p class="muted">'+tb.length+' tilbud · billigste først</p>'+
+      tb.slice(0,30).map(t=>'<div class="tilbud">'+(t.billede?'<img loading="lazy" src="'+esc(t.billede)+'" alt="">':"")+
+      '<div class="t"><span class="butik c-'+t.butik+'">'+esc(BUTIKKER[t.butik])+'</span><b>'+esc(t.titel)+'</b><span class="muted">'+esc(periode(t))+(t.tekst?" · "+esc(t.tekst.slice(0,90))+(t.tekst.length>90?"…":""):"")+'</span></div>'+
+      '<div style="text-align:right"><div class="pris">'+esc(kr(t.pris))+'</div>'+(t.foer?'<div class="muted" style="text-decoration:line-through">'+esc(kr(t.foer))+'</div>':"")+'</div></div>').join("")+
+      '<div class="knapper"><button class="btn" id="lukA">Luk</button></div>');
+    $("lukA").onclick=lukArk;
+  }
+  function visFrysFor(vid){
+    const v=get(vid); if(!v) return; const fr=frysFor(v.navn);
+    aabenArk('<h2>I fryseren</h2><p class="muted">Matcher “'+esc(v.navn)+'”</p><div class="card">'+fr.map(f=>{ const s=get(f.skuffe);
+      return '<div class="fvare"><div class="navn">'+esc(f.navn)+'<div class="muted">'+esc(s?s.navn:"")+'</div></div><div class="antal">'+esc(tal(f.antal))+(f.enhed?" "+esc(f.enhed):"")+'</div></div>'; }).join("")+'</div>'+
+      '<div class="knapper"><button class="btn danger" id="fjernV">Fjern fra sedlen</button><button class="btn" id="lukA">Luk</button></div>');
+    $("lukA").onclick=lukArk; $("fjernV").onclick=()=>{ husk(v.navn); del(v.id); lukArk(); toast(v.navn+" fjernet",()=>put(v)); };
+  }
+  function retVare(id){
+    const v=get(id); if(!v) return;
+    aabenArk('<h2>Vare</h2><label class="felt">Navn<input type="text" id="rNavn" value="'+esc(v.navn)+'"></label>'+
+      '<div class="knapper"><button class="btn danger" id="rSlet">Slet</button><button class="btn primary" id="rGem">Gem</button></div>');
+    $("rGem").onclick=()=>{ const n=$("rNavn").value.trim(); if(n){ v.navn=n; put(v); } lukArk(); };
+    $("rSlet").onclick=()=>{ husk(v.navn); del(id); lukArk(); toast(v.navn+" slettet",()=>put(v)); };
+  }
+  function retFrys(id){
+    const f=get(id); if(!f) return;
+    const opts=skuffer().map(s=>'<option value="'+esc(s.id)+'"'+(s.id===f.skuffe?" selected":"")+'>'+esc(s.navn)+'</option>').join("");
+    const lagt=f.lagtInd?new Date(f.lagtInd).toLocaleDateString("da-DK",{day:"numeric",month:"short",year:"numeric"}):"";
+    aabenArk('<h2>Fryservare</h2>'+(lagt?'<p class="muted">Sidst lagt i: '+esc(lagt)+'</p>':"")+
+      '<label class="felt">Navn<input type="text" id="fNavn" value="'+esc(f.navn)+'"></label>'+
+      '<div class="row"><label class="felt grow">Antal<input type="number" id="fAntal" value="'+esc(f.antal)+'" step="any" min="0" inputmode="decimal"></label>'+
+      '<label class="felt grow">Enhed<select id="fEnhed">'+["","stk","pose","pakke","bakke","æske"].map(e=>'<option'+(e===(f.enhed||"")?" selected":"")+' value="'+e+'">'+(e||"–")+'</option>').join("")+'</select></label></div>'+
+      '<label class="felt">Skuffe<select id="fSkuffe">'+opts+'</select></label>'+
+      '<div class="knapper"><button class="btn" id="fSeddel">Sæt på sedlen</button></div>'+
+      '<div class="knapper"><button class="btn danger" id="fSlet">Slet</button><button class="btn primary" id="fGem">Gem</button></div>');
+    $("fGem").onclick=()=>{ const n=$("fNavn").value.trim(); if(n) f.navn=n; f.antal=parseFloat(String($("fAntal").value).replace(",","."))||0; f.enhed=$("fEnhed").value; f.skuffe=$("fSkuffe").value;
+      if(f.antal<=0){ del(f.id); } else put(f); lukArk(); };
+    $("fSlet").onclick=()=>{ del(f.id); lukArk(); toast(f.navn+" slettet",()=>put(f)); };
+    $("fSeddel").onclick=()=>{ tilfoejVare(f.navn); lukArk(); toast(f.navn+" sat på sedlen"); };
+  }
+
+  // ---------- indstillinger ----------
+  $("indstBtn").onclick=visIndst;
+  function visIndst(){
+    const s=indst(); const b=s.butikker||{};
+    const sk=skuffer();
+    aabenArk('<h2>Indstillinger</h2>'+
+      '<div class="card"><h2 style="font-size:16px">Butikker med tilbud</h2>'+Object.keys(BUTIKKER).map(k=>'<label class="toggle">'+BUTIKKER[k]+'<input type="checkbox" data-butik="'+k+'"'+(b[k]!==false?" checked":"")+'></label>').join("")+
+      '<button class="btn small" id="tFrisk" style="margin-top:8px">Hent tilbud igen</button></div>'+
+      '<div class="card"><h2 style="font-size:16px">Skuffer i fryseren</h2>'+sk.map((x,i)=>'<div class="row" style="margin-top:8px"><input class="grow" type="text" data-sknavn="'+esc(x.id)+'" value="'+esc(x.navn)+'">'+
+        '<button class="iconbtn" data-skop="'+esc(x.id)+'"'+(i===0?" disabled":"")+' aria-label="Flyt op">↑</button><button class="iconbtn" data-skslet="'+esc(x.id)+'" aria-label="Slet">✕</button></div>').join("")+
+      '<div class="row" style="margin-top:10px"><input class="grow" type="text" id="nySkuffe" placeholder="Ny skuffe"><button class="btn small" id="tilfSkuffe">Tilføj</button></div>'+
+      (HA?'<button class="btn small" id="genImport" style="margin-top:10px">Hent igen fra Home Assistant-lister</button>':"")+'</div>'+
+      '<div class="card"><h2 style="font-size:16px">Fryser-skærm</h2><p class="muted">Viser kun fryseren med store knapper, holder skærmen tændt og opdaterer hvert 5. sekund. Til en tablet ved fryseren.</p>'+
+      '<button class="btn small" id="skaermBtn">'+(SKAERM?"Slå fryser-skærm fra på denne enhed":"Brug denne enhed som fryser-skærm")+'</button></div>'+
+      '<div class="knapper"><button class="btn primary" id="lukA">Færdig</button></div>');
+    $("skaermBtn").onclick=()=>{ location.href=location.pathname+"?skaerm="+(SKAERM?"fra":"fryser"); };
+    $("lukA").onclick=()=>{ document.querySelectorAll("[data-sknavn]").forEach(i=>{ const x=get(i.dataset.sknavn); const n=i.value.trim(); if(x&&n&&n!==x.navn){ x.navn=n; put(x); } }); lukArk(); };
+    document.querySelectorAll("[data-butik]").forEach(c=>c.onchange=()=>{ const s=indst(); s.butikker=Object.assign({rema:true,netto:true,brugsen:true},s.butikker||{}); s.butikker[c.dataset.butik]=c.checked; put(s); matchCache.clear(); render(); });
+    $("tFrisk").onclick=()=>hentTilbud(true);
+    $("tilfSkuffe").onclick=()=>{ const n=$("nySkuffe").value.trim(); if(!n) return; const max=Math.max(-1,...skuffer().map(x=>x.orden||0)); put({id:newId("sk"),kind:"skuffe",navn:n,orden:max+1}); visIndst(); };
+    document.querySelectorAll("[data-skslet]").forEach(btn=>btn.onclick=()=>{
+      const x=get(btn.dataset.skslet); const n=alle("frys").filter(f=>f.skuffe===x.id).length;
+      if(n&&!confirm("Skuffen "+x.navn+" har "+n+" varer. Slet skuffen og varerne?")) return;
+      alle("frys").filter(f=>f.skuffe===x.id).forEach(f=>del(f.id)); del(x.id); visIndst(); });
+    document.querySelectorAll("[data-skop]").forEach(btn=>btn.onclick=()=>{
+      const l=skuffer(); const i=l.findIndex(x=>x.id===btn.dataset.skop); if(i<1) return;
+      const a=l[i], b2=l[i-1]; const oa=a.orden||i, ob=b2.orden||i-1; a.orden=ob; b2.orden=oa===ob?ob+1:oa; put(a); put(b2); visIndst(); });
+    const gi=$("genImport"); if(gi) gi.onclick=()=>{ importer(true); };
+  }
+
+  // ---------- import fra Home Assistants egne lister ----------
+  async function importer(manuel){
+    try{
+      // send egne ændringer først, så de ikke bliver overskrevet
+      await sync();
+      const j=await api("importer",{method:"POST"});
+      flet(j.poster); persist(); render();
+      try{ localStorage.setItem("hs_importeret","1"); }catch(e){}
+      if(manuel||j.fryser||j.seddel) toast("Hentet "+j.fryser+" fryservarer i "+j.skuffer+" skuffer"+(j.seddel?" og "+j.seddel+" på sedlen":""));
+      if(manuel) lukArk();
+    }catch(e){ if(manuel) toast(e.login?"Log ind først":"Kunne ikke hente listerne"); }
+  }
+  $("importBtn").onclick=()=>importer(true);
+
+  // ---------- toast ----------
+  let toastT=null;
+  function toast(msg,handling,handlingTekst,fortryd){
+    const t=$("toast"); t.innerHTML="<span>"+esc(msg)+"</span>";
+    if(handling){ const b=document.createElement("button"); b.textContent=handlingTekst||"Fortryd"; b.onclick=()=>{ t.classList.add("hidden"); handling(); }; t.appendChild(b); }
+    if(fortryd){ const b=document.createElement("button"); b.textContent="Fortryd"; b.onclick=()=>{ t.classList.add("hidden"); fortryd(); }; t.appendChild(b); }
+    t.classList.remove("hidden"); clearTimeout(toastT); toastT=setTimeout(()=>t.classList.add("hidden"),(handling||fortryd)?6000:2500);
+  }
+
+  // ---------- fryser-skærm (tablet ved fryseren) ----------
+  const qs=new URLSearchParams(location.search);
+  if(qs.get("skaerm")==="fryser"){ try{ localStorage.setItem("hs_skaerm","1"); }catch(e){} history.replaceState(null,"",location.pathname); }
+  if(qs.get("skaerm")==="fra"){ try{ localStorage.removeItem("hs_skaerm"); }catch(e){} history.replaceState(null,"",location.pathname); }
+  const SKAERM=localStorage.getItem("hs_skaerm")==="1";
+  let wakeLock=null;
+  async function holdVaagen(){ try{ if(SKAERM&&"wakeLock" in navigator&&!document.hidden&&!wakeLock){ wakeLock=await navigator.wakeLock.request("screen"); wakeLock.addEventListener("release",()=>{ wakeLock=null; }); } }catch(e){} }
+  if(SKAERM){
+    document.body.classList.add("skaerm"); fane="fryser";
+    document.addEventListener("visibilitychange",holdVaagen); document.addEventListener("click",holdVaagen,{once:true});
+    setInterval(()=>{ if(!document.hidden) sync(); },5000);
+    const opdUr=()=>{ const n=alle("vare").filter(v=>!v.taget).length; $("skaermInfo").textContent=n+" "+(n===1?"vare":"varer")+" på sedlen · "+new Date().toLocaleString("da-DK",{weekday:"long",hour:"2-digit",minute:"2-digit"}); };
+    setInterval(opdUr,20000); const r0=render; render=function(){ r0(); opdUr(); };
+    holdVaagen();
+  }
+  $("mangelForm").onsubmit=e=>{ e.preventDefault(); const n=$("mangelInput").value.trim(); if(!n) return; tilfoejVare(n); $("mangelInput").value=""; $("mangelInput").blur(); toast(n+" sat på sedlen"); };
+
+  // ---------- start ----------
+  visFane(fane); render();
+  (async()=>{
+    await handleLoginReturn();
+    await sync();
+    if(HA && !skuffer().length && localStorage.getItem("hs_importeret")!=="1" && syncState.status==="ok") await importer(false);
+    hentTilbud();
+  })();
+  if("serviceWorker" in navigator&&(location.protocol==="https:"||location.hostname==="localhost")&&HA){ navigator.serviceWorker.register("sw.js").catch(()=>{}); }
+})();
+</script>
+</body>
+</html>
