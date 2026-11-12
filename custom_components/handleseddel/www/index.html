@@ -29,7 +29,7 @@ h2{margin:0;font-size:17px;font-weight:650}
 .muted{color:var(--muted);font-size:14px}
 .card{background:var(--card);border-radius:16px;padding:14px 16px;margin-top:12px}
 .iconbtn{width:44px;height:44px;border-radius:22px;border:1px solid var(--line);background:#fff;font-size:20px;display:inline-flex;align-items:center;justify-content:center;cursor:pointer}
-input[type=text],input[type=search],input[type=number],select{width:100%;min-height:48px;border:1px solid var(--line);border-radius:12px;padding:10px 14px;background:#fff;font-size:16px}
+input[type=text],input[type=search],input[type=number],input[type=date],select{width:100%;min-height:48px;border:1px solid var(--line);border-radius:12px;padding:10px 14px;background:#fff;font-size:16px}
 .row{display:flex;gap:8px;align-items:center}
 .row > .grow{flex:1;min-width:0}
 .btn{min-height:48px;border-radius:12px;border:1px solid var(--line);background:#fff;font-weight:600;font-size:15px;padding:0 16px;cursor:pointer}
@@ -58,6 +58,9 @@ input[type=text],input[type=search],input[type=number],select{width:100%;min-hei
 .pille.b-rema{background:#E7EEF8;color:var(--rema)}
 .pille.b-netto{background:#FFF6CC;color:var(--netto)}
 .pille.b-brugsen{background:#FBE9E7;color:var(--brugsen)}
+.pille.b-anden{background:#EEE8F6;color:#5B3E8A}
+.c-anden{color:#5B3E8A}
+.egen{font-size:11px;font-weight:700;background:#FFF1C2;color:#6B5200;border-radius:8px;padding:2px 7px;margin-left:6px;text-transform:none;letter-spacing:0}
 .sekhead{display:flex;justify-content:space-between;align-items:center;gap:8px}
 .tom{padding:20px 4px;text-align:center;color:var(--muted)}
 
@@ -147,6 +150,7 @@ body.skaerm #skaermTop{display:grid;grid-template-columns:1fr 1fr;gap:12px;margi
       <div class="sekhead"><h2 id="kurvTitel">I kurven</h2><button class="btn small" id="rydBtn">Ryd</button></div>
       <div id="kurvListe"></div>
     </div>
+    <div class="knapper" style="display:flex;margin-top:8px"><button class="btn" id="mineBtn" style="flex:1">★ Mine tilbud</button></div>
     <p class="muted" id="tilbudInfo" style="padding:4px 4px 0"></p>
   </section>
 
@@ -186,6 +190,7 @@ body.skaerm #skaermTop{display:grid;grid-template-columns:1fr 1fr;gap:12px;margi
   const esc=s=>String(s==null?"":s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
   const newId=p=>p+"-"+Date.now().toString(36)+"-"+Math.random().toString(36).slice(2,8);
   const BUTIKKER={rema:"Rema 1000",netto:"Netto",brugsen:"Brugsen"};
+  const butikNavn=t=>BUTIKKER[t.butik]||t.butikNavn||"Anden butik";
   const tal=n=>{ const v=Math.round((+n||0)*100)/100; return String(v).replace(".",","); };
   const kr=n=>n==null?"":(Math.round(n*100)%100? (n.toFixed(2).replace(".",",")) : String(Math.round(n)))+" kr";
 
@@ -352,6 +357,8 @@ body.skaerm #skaermTop{display:grid;grid-template-columns:1fr 1fr;gap:12px;margi
       const nu=Date.now(); const b=indst().butikker||{}; const ud=udelukFor(navn);
       res=tilbud.filter(t=>b[t.butik]!==false && !ud.has("#"+t.id) && (!t.til||Date.parse(t.til.replace(/\+0000$/,"Z"))>nu) &&
         (passer(tokens,t.titel,ud) || (tokens.length===1&&tokens[0].length>=5&&passer(tokens,t.tekst,ud))));
+      // egne (personlige) tilbud, fx fra Netto+
+      for(const m of mineTilbud()) if(!ud.has("#"+m.id)&&passer(tokens,m.titel,ud)) res.push(m);
       res.sort((a,b)=>(a.pris??1e9)-(b.pris??1e9));
     }
     matchCache.set(key,res); return res;
@@ -379,6 +386,8 @@ body.skaerm #skaermTop{display:grid;grid-template-columns:1fr 1fr;gap:12px;margi
   let render=function(){ drawSync(); renderSeddel(); renderFryser(); };
 
   function renderSeddel(){
+    matchCache.clear();
+    { const n=mineTilbud().length; $("mineBtn").textContent="★ Mine tilbud"+(n?" ("+n+")":""); }
     const varer=alle("vare");
     const mangler=varer.filter(v=>!v.taget).sort((a,b)=>(a.oprettet||0)-(b.oprettet||0));
     const taget=varer.filter(v=>v.taget).sort((a,b)=>(b.tagetTid||0)-(a.tagetTid||0));
@@ -400,8 +409,9 @@ body.skaerm #skaermTop{display:grid;grid-template-columns:1fr 1fr;gap:12px;margi
       const fr=frysFor(v.navn);
       if(fr.length){ const f=fr[0]; const sk=get(f.skuffe); info+='<span class="pille frys" data-frys="'+esc(v.id)+'">❄︎ Har '+esc(fAntal(f))+(fr.length>1?" +"+(fr.length-1):"")+(sk?" · "+esc(sk.navn):"")+'</span>'; }
       const tb=tilbudFor(v.navn); const set=new Set();
+      // én pille pr. butik; et eget tilbud går forrest hvis det er billigst
       for(const t of tb){ if(set.has(t.butik)) continue; set.add(t.butik);
-        info+='<span class="pille b-'+t.butik+'" data-tilbud="'+esc(v.id)+'">'+esc(BUTIKKER[t.butik])+" "+esc(kr(t.pris))+'</span>'; }
+        info+='<span class="pille b-'+(BUTIKKER[t.butik]?t.butik:"anden")+'" data-tilbud="'+esc(v.id)+'">'+(t.egen?"★ ":"")+esc(butikNavn(t))+" "+esc(kr(t.pris))+'</span>'; }
     }
     return '<div class="vare'+(v.taget?" taget":"")+'"><button class="tjek" data-tjek="'+esc(v.id)+'" aria-label="Afkryds">'+(v.taget?"✓":"")+'</button>'+
       '<div class="indhold"><div class="navn" data-ret="'+esc(v.id)+'">'+esc(v.navn)+'</div>'+(info?'<div class="info">'+info+'</div>':"")+'</div></div>';
@@ -496,9 +506,9 @@ body.skaerm #skaermTop{display:grid;grid-template-columns:1fr 1fr;gap:12px;margi
     const v=get(vid); if(!v) return; const tb=tilbudFor(v.navn);
     aabenArk('<h2>Tilbud på '+esc(v.navn)+'</h2><p class="muted">'+tb.length+' tilbud · billigste først</p>'+
       tb.slice(0,30).map(t=>'<div class="tilbud">'+(t.billede?'<img loading="lazy" src="'+esc(t.billede)+'" alt="">':"")+
-      '<div class="t"><span class="butik c-'+t.butik+'">'+esc(BUTIKKER[t.butik])+'</span><b>'+esc(t.titel)+'</b><span class="muted">'+esc(periode(t))+(t.tekst?" · "+esc(t.tekst.slice(0,90))+(t.tekst.length>90?"…":""):"")+'</span></div>'+
+      '<div class="t"><span class="butik c-'+(BUTIKKER[t.butik]?t.butik:"anden")+'">'+esc(butikNavn(t))+(t.egen?'<span class="egen">Mit tilbud</span>':'')+'</span><b>'+esc(t.titel)+'</b><span class="muted">'+esc(periode(t))+(t.tekst?" · "+esc(t.tekst.slice(0,90))+(t.tekst.length>90?"…":""):"")+'</span></div>'+
       '<div style="text-align:right"><div class="pris">'+esc(kr(t.pris))+'</div>'+(t.foer?'<div class="muted" style="text-decoration:line-through">'+esc(kr(t.foer))+'</div>':"")+
-      '<button class="btn small" style="margin-top:6px" data-ikke="'+esc(t.id)+'">Ikke den</button></div></div>').join("")+
+      (t.egen?'':'<button class="btn small" style="margin-top:6px" data-ikke="'+esc(t.id)+'">Ikke den</button>')+'</div></div>').join("")+
       (udelukFor(v.navn).size?'<div class="knapper"><button class="btn small" id="nulstil">Vis skjulte tilbud igen</button></div>':"")+
       '<div class="knapper"><button class="btn" id="lukA">Luk</button></div>');
     $("lukA").onclick=lukArk;
@@ -678,6 +688,47 @@ body.skaerm #skaermTop{display:grid;grid-template-columns:1fr 1fr;gap:12px;margi
     toast(ok?"Handlesedlen er kopieret ("+l.length+" varer)":"Kunne ikke kopiere");
   };
 
+  // ---------- mine tilbud (personlige tilbud, fx Netto+) ----------
+  function slutAfDag(d){ const x=new Date(d+"T23:59:59"); return isNaN(x)?null:x; }
+  function mineTilbud(){
+    const nu=Date.now();
+    return alle("mittilbud").filter(m=>{ const t=slutAfDag(m.til); return !t||t.getTime()>=nu; })
+      .map(m=>({id:m.id,egen:true,butik:m.butik,butikNavn:m.butikNavn,titel:m.navn,tekst:m.note||"",pris:m.pris,foer:null,
+        fra:null,til:m.til?slutAfDag(m.til).toISOString():null,billede:""}));
+  }
+  function naesteSoendag(){ const d=new Date(); d.setDate(d.getDate()+((7-d.getDay())%7||7)); return d.toISOString().slice(0,10); }
+  function dagTekst(iso){ const d=slutAfDag(iso); return d?d.toLocaleDateString("da-DK",{weekday:"short",day:"numeric",month:"short"}):""; }
+  function visMine(){
+    const l=alle("mittilbud").sort((a,b)=>String(a.til||"").localeCompare(String(b.til||"")));
+    const nu=Date.now();
+    aabenArk('<h2>Mine tilbud</h2><p class="muted">Personlige tilbud, fx fra Netto+ i Netto-appen. De bliver markeret på sedlen som de andre tilbud og forsvinder, når de udløber.</p>'+
+      '<form id="mineForm" class="card" autocomplete="off">'+
+      '<label class="felt">Vare<input type="text" name="navn" placeholder="fx Kaffe" list="forslag" required></label>'+
+      '<div class="row"><label class="felt grow">Butik<select name="butik">'+Object.keys(BUTIKKER).map(k=>'<option value="'+k+'"'+(k==="netto"?" selected":"")+'>'+BUTIKKER[k]+'</option>').join("")+'<option value="anden">Anden butik …</option></select></label>'+
+      '<label class="felt grow">Pris (kr)<input type="number" name="pris" step="0.01" min="0" inputmode="decimal" placeholder="35"></label></div>'+
+      '<label class="felt hidden" id="andenFelt">Butikkens navn<input type="text" name="butikNavn" placeholder="fx Lidl"></label>'+
+      '<div class="row"><label class="felt grow">Gælder til og med<input type="date" name="til" value="'+naesteSoendag()+'"></label>'+
+      '<label class="felt grow">Note<input type="text" name="note" placeholder="fx max 2 stk."></label></div>'+
+      '<div class="knapper"><button class="btn primary">Tilføj tilbud</button></div></form>'+
+      (l.length?'<div class="card">'+l.map(m=>{ const udl=m.til&&slutAfDag(m.til).getTime()<nu;
+        return '<div class="fvare"'+(udl?' style="opacity:.5"':'')+'><div class="navn"><b>'+esc(m.navn)+'</b><div class="muted">'+esc(butikNavn(m))+(m.pris!=null?" · "+esc(kr(m.pris)):"")+(m.til?" · "+(udl?"udløbet ":"til ")+esc(dagTekst(m.til)):"")+(m.note?" · "+esc(m.note):"")+'</div></div>'+
+          '<button class="iconbtn" data-mslet="'+esc(m.id)+'" aria-label="Slet">✕</button></div>'; }).join("")+'</div>':'')+
+      '<div class="knapper"><button class="btn" id="lukA">Luk</button></div>');
+    $("lukA").onclick=lukArk;
+    const f=$("mineForm");
+    f.butik.onchange=()=>$("andenFelt").classList.toggle("hidden",f.butik.value!=="anden");
+    f.onsubmit=e=>{ e.preventDefault();
+      const navn=f.navn.value.trim(); if(!navn) return;
+      const pris=parseFloat(String(f.pris.value).replace(",","."));
+      put({id:newId("mt"),kind:"mittilbud",navn,butik:f.butik.value,butikNavn:f.butik.value==="anden"?(f.butikNavn.value.trim()||"Anden butik"):"",
+        pris:isNaN(pris)?null:pris,til:f.til.value||null,note:f.note.value.trim()});
+      toast(navn+" tilføjet til dine tilbud"); visMine(); };
+    document.querySelectorAll("[data-mslet]").forEach(b=>b.onclick=()=>{ const m=get(b.dataset.mslet); del(b.dataset.mslet); visMine(); if(m) toast(m.navn+" slettet",()=>put(m)); });
+  }
+  $("mineBtn").onclick=visMine;
+  // ryd egne tilbud, der er udløbet for mere end 14 dage siden
+  function rydGamleMine(){ const g=Date.now()-14*24*3600*1000; alle("mittilbud").forEach(m=>{ const t=m.til&&slutAfDag(m.til); if(t&&t.getTime()<g) del(m.id); }); }
+
   // ---------- start ----------
   visFane(fane); render();
   (async()=>{
@@ -686,6 +737,7 @@ body.skaerm #skaermTop{display:grid;grid-template-columns:1fr 1fr;gap:12px;margi
     if(HA && !skuffer().length && localStorage.getItem("hs_importeret")!=="1" && syncState.status==="ok") await importer(false);
     hentTilbud();
     if(HA) hentNavneTilFjernede();
+    rydGamleMine();
   })();
   if("serviceWorker" in navigator&&(location.protocol==="https:"||location.hostname==="localhost")&&HA){ navigator.serviceWorker.register("sw.js").catch(()=>{}); }
 })();
