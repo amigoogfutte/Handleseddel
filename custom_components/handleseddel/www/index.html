@@ -798,12 +798,27 @@ body.skaerm #skaermTop{display:grid;grid-template-columns:1fr 1fr;gap:12px;margi
   function tegn(img,sx,sy,sw,sh,maks,kval){ const sk=Math.min(1,maks/Math.max(sw,sh)); const c=document.createElement("canvas");
     c.width=Math.max(1,Math.round(sw*sk)); c.height=Math.max(1,Math.round(sh*sk)); const g=c.getContext("2d"); g.fillStyle="#fff"; g.fillRect(0,0,c.width,c.height);
     g.drawImage(img,sx,sy,sw,sh,0,0,c.width,c.height); return c.toDataURL("image/jpeg",kval); }
+  // AI'en giver boksen som andele (0–1), men nogle gange i promille (0–1000) eller i pixels – gør det til andele.
+  function boks(b,img){
+    if(!b) return null;
+    let v=[b.boks_x1,b.boks_y1,b.boks_x2,b.boks_y2].map(x=>typeof x==="string"?parseFloat(x.replace(",",".")):x);
+    if(!v.every(x=>typeof x==="number"&&isFinite(x)&&x>=0)) return null;
+    const m=Math.max(...v);
+    if(m>1.001){
+      if(m<=1000) v=v.map(x=>x/1000);
+      else { const sk=Math.min(1,1600/Math.max(img.naturalWidth,img.naturalHeight)); const w=img.naturalWidth*sk, h=img.naturalHeight*sk; v=[v[0]/w,v[1]/h,v[2]/w,v[3]/h]; }
+    }
+    let [x1,y1,x2,y2]=v; if(x1>x2) [x1,x2]=[x2,x1]; if(y1>y2) [y1,y2]=[y2,y1];
+    x1=Math.max(0,x1); y1=Math.max(0,y1); x2=Math.min(1,x2); y2=Math.min(1,y2);
+    return (x2-x1>0.03&&y2-y1>0.03)?{x1,y1,x2,y2}:null;
+  }
   function udsnit(img,b){
     const W=img.naturalWidth,H=img.naturalHeight;
     let x1=0,y1=0,x2=1,y2=1;
-    if(b&&[b.boks_x1,b.boks_y1,b.boks_x2,b.boks_y2].every(v=>typeof v==="number")&&b.boks_x2-b.boks_x1>0.03&&b.boks_y2-b.boks_y1>0.03){
-      const px=(b.boks_x2-b.boks_x1)*0.06, py=(b.boks_y2-b.boks_y1)*0.06;
-      x1=Math.max(0,b.boks_x1-px); y1=Math.max(0,b.boks_y1-py); x2=Math.min(1,b.boks_x2+px); y2=Math.min(1,b.boks_y2+py); }
+    const k=boks(b,img);
+    if(k){
+      const px=(k.x2-k.x1)*0.06, py=(k.y2-k.y1)*0.06;
+      x1=Math.max(0,k.x1-px); y1=Math.max(0,k.y1-py); x2=Math.min(1,k.x2+px); y2=Math.min(1,k.y2+py); }
     let d="", maks=320, kval=0.75;
     for(let i=0;i<5;i++){ d=tegn(img,x1*W,y1*H,(x2-x1)*W,(y2-y1)*H,maks,kval); if(d.length<38000) break; maks=Math.round(maks*0.8); kval=Math.max(0.45,kval-0.08); }
     return d;
@@ -846,14 +861,14 @@ body.skaerm #skaermTop{display:grid;grid-template-columns:1fr 1fr;gap:12px;margi
       for(const t of liste){
         const navn=String(t.fulde_navn||t.navn||"").trim(); if(!navn) continue; const kort=(t.fulde_navn&&t.navn)?String(t.navn).trim():"";
         const butik=[...f.butik.options].some(o=>o.value===t.butik)?t.butik:"netto";
-        const harBoks=[t.boks_x1,t.boks_y1,t.boks_x2,t.boks_y2].every(v=>typeof v==="number");
+        const harBoks=!!boks(t,img);
         const gl=aktive.find(m=>m.butik===butik&&(norm(m.titel)===norm(navn)||(kort&&(norm(m.titel)===norm(kort)||norm(m.kort)===norm(kort)))));
-        if(gl){ fandtes++; const r=get(gl.id); if(r&&!r.billede&&harBoks){ r.billede=udsnit(img,t); put(r); } continue; }
+        if(gl){ fandtes++; const r=get(gl.id); if(r&&(!r.billede||(harBoks&&r.helt))){ r.billede=udsnit(img,t); r.helt=!harBoks; put(r); } continue; }
         let til=(t.slutdato&&/^\d{4}-\d{2}-\d{2}$/.test(t.slutdato))?t.slutdato:null;
         if(!til){ const x=(laering().tilbud||{})[norm(navn)]; const d=new Date(); d.setDate(d.getDate()+((x&&x.dage>=0)?x.dage:7)); til=isoDag(d); }
         const note=[t.note,(t.foer_pris?"før "+kr(t.foer_pris):"")].filter(Boolean).join(" · ");
         const pris=typeof t.pris==="number"?t.pris:null;
-        put({id:newId("mt"),kind:"mittilbud",navn,kort,butik,butikNavn:butik==="anden"?(t.butik_navn||"Anden butik"):"",pris,til,note,billede:harBoks?udsnit(img,t):""});
+        put({id:newId("mt"),kind:"mittilbud",navn,kort,butik,butikNavn:butik==="anden"?(t.butik_navn||"Anden butik"):"",pris,til,note,billede:udsnit(img,t),helt:!harBoks});
         laer("tilbud",navn,{butik,butikNavn:t.butik_navn||"",pris,note,dage:dageTil(til)});
         if(paaSeddel&&!paaSedlen(navn,kort)) tilfoejVare(navn);
         nye++;
