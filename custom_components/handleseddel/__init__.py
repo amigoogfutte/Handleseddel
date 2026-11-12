@@ -385,10 +385,13 @@ class LaesView(HomeAssistantView):
                     "instructions": (
                         f"I dag er {ugedag} {idag.isoformat()}. Billedet er et tilbud fra en dansk dagligvarebutik, "
                         "ofte et skærmbillede af et personligt tilbud i Netto-appen (Netto+), eller et foto af et skilt/en avis. "
-                        "Find det ene tilbud, der er i fokus, og udfyld felterne. Svar på dansk. "
-                        "Boksen skal omslutte selve produktbilledet (pakken/varen), ikke tekst og pris."
+                        "Find ALLE tilbud på billedet (det kan være ét eller mange). "
+                        "Svar KUN med en JSON-liste uden anden tekst, ét objekt pr. tilbud med disse felter:\n"
+                        + "\n".join(f'- "{k}": {v["description"]}' for k, v in STRUKTUR.items())
+                        + "\nUdelad felter, du ikke kan se. Svar på dansk. "
+                        "Boksen (boks_x1, boks_y1, boks_x2, boks_y2) skal omslutte selve produktbilledet (pakken/varen) "
+                        "for netop det tilbud, ikke tekst og pris. Tal skal være tal, ikke tekst."
                     ),
-                    "structure": STRUKTUR,
                     "attachments": [{"media_content_id": f"media-source://media_source/local/handleseddel/{navn}",
                                      "media_content_type": "image/jpeg"}],
                 },
@@ -407,10 +410,49 @@ class LaesView(HomeAssistantView):
             return self.json_message(f"AI kunne ikke læse billedet: {e}", 502)
         finally:
             await self.hass.async_add_executor_job(lambda: (mappe / navn).unlink(missing_ok=True))
-        data = (svar or {}).get("data")
-        if not isinstance(data, dict):
-            return self.json_message("AI gav intet svar", 502)
-        return self.json({"tilbud": data})
+        liste = _laes_json_liste((svar or {}).get("data"))
+        if not liste:
+            return self.json_message("Fandt ingen tilbud på billedet", 422)
+        return self.json({"tilbud": liste})
+
+
+def _laes_json_liste(data) -> list[dict]:
+    """AI-svaret er en JSON-liste som tekst (evt. i ```json ... ```). Gør den til en liste af tilbud."""
+    if isinstance(data, list):
+        raw = data
+    elif isinstance(data, dict):
+        raw = [data]
+    else:
+        tekst = str(data or "").strip()
+        m = re.search(r"```(?:json)?\s*(.*?)```", tekst, re.S)
+        if m:
+            tekst = m.group(1).strip()
+        start = min([i for i in (tekst.find("["), tekst.find("{")) if i >= 0], default=-1)
+        if start < 0:
+            return []
+        try:
+            raw = json.loads(tekst[start:])
+        except ValueError:
+            slut = max(tekst.rfind("]"), tekst.rfind("}"))
+            try:
+                raw = json.loads(tekst[start:slut + 1])
+            except ValueError:
+                return []
+        if isinstance(raw, dict):
+            raw = raw.get("tilbud") if isinstance(raw.get("tilbud"), list) else [raw]
+    ud = []
+    for t in raw if isinstance(raw, list) else []:
+        if not isinstance(t, dict) or not str(t.get("navn") or "").strip():
+            continue
+        for k in ("pris", "foer_pris", "boks_x1", "boks_y1", "boks_x2", "boks_y2"):
+            v = t.get(k)
+            if isinstance(v, str):
+                try:
+                    t[k] = float(v.replace(",", ".").replace("kr", "").strip())
+                except ValueError:
+                    t[k] = None
+        ud.append(t)
+    return ud[:20]
 
 
 class AppRedirectView(HomeAssistantView):
