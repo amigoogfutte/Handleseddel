@@ -66,8 +66,11 @@ class Store:
         tmp.write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
         os.replace(tmp, self.fil)
 
-    def sync(self, indkomne: list, kun_nye: bool = False) -> dict[str, dict]:
-        """Flet poster ind og returnér alle poster. kun_nye: tilføj kun poster, der ikke findes."""
+    def sync(self, indkomne: list, kun_nye: bool = False, admin: bool = True) -> dict[str, dict]:
+        """Flet poster ind og returnér alle poster. kun_nye: tilføj kun poster, der ikke findes.
+
+        admin=False: "Mine tilbud" (kind mittilbud) kan ses af alle, men kun rettes af administratorer.
+        """
         with self._laas:
             data = self._laes()
             aendret = False
@@ -81,6 +84,8 @@ class Store:
                 if len(json.dumps(r, ensure_ascii=False)) > MAX_RECORD_BYTES:
                     continue
                 cur = data.get(rid)
+                if not admin and (r.get("kind") == "mittilbud" or (cur or {}).get("kind") == "mittilbud"):
+                    continue
                 if kun_nye and cur is not None:
                     continue
                 if cur is None or upd > cur.get("updated", 0):
@@ -131,7 +136,9 @@ class SyncView(HomeAssistantView):
         poster = obj.get("poster") if isinstance(obj, dict) else None
         if not isinstance(poster, list):
             return self.json_message("Forkert indhold", 400)
-        data = await self.hass.async_add_executor_job(self.store.sync, poster)
+        user = request.get("hass_user")
+        admin = bool(user and user.is_admin)
+        data = await self.hass.async_add_executor_job(lambda: self.store.sync(poster, admin=admin))
         return self.json({"poster": list(data.values())})
 
 
@@ -352,6 +359,9 @@ class LaesView(HomeAssistantView):
         import datetime as dt
         import uuid
 
+        user = request.get("hass_user")
+        if not (user and user.is_admin):
+            return self.json_message("Kun administratorer kan oprette tilbud", 403)
         entiteter = self.hass.states.async_entity_ids("ai_task")
         if not entiteter:
             return self.json_message("Ingen AI sat op i Home Assistant (fx Google Gemini).", 409)
@@ -489,6 +499,18 @@ def _laes_json_liste(data) -> list[dict]:
     return ud[:20]
 
 
+
+class MigView(HomeAssistantView):
+    """GET: hvem er logget ind, og er det en administrator?"""
+
+    url = "/api/handleseddel/mig"
+    name = "api:handleseddel:mig"
+    requires_auth = True
+
+    async def get(self, request: web.Request) -> web.Response:
+        user = request.get("hass_user")
+        return self.json({"navn": getattr(user, "name", "") or "", "admin": bool(user and user.is_admin)})
+
 class AppRedirectView(HomeAssistantView):
     """Kort adresse: /handleseddel-start → appen."""
 
@@ -510,7 +532,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         # HTTP-ruter kan ikke fjernes igen, så de registreres kun én gang pr. opstart.
         await hass.http.async_register_static_paths([StaticPathConfig(APP_URL, str(WWW), False)])
         tilbud = Tilbud(hass, store)
-        for view in (SyncView(hass, store), ImportView(hass, store), TilbudView(tilbud), LaesView(hass), AppRedirectView()):
+        for view in (SyncView(hass, store), ImportView(hass, store), TilbudView(tilbud), LaesView(hass), MigView(), AppRedirectView()):
             hass.http.register_view(view)
         data["http_registered"] = True
 

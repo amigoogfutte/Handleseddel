@@ -194,6 +194,9 @@ body.skaerm #skaermTop{display:grid;grid-template-columns:1fr 1fr;gap:12px;margi
   const esc=s=>String(s==null?"":s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
   const newId=p=>p+"-"+Date.now().toString(36)+"-"+Math.random().toString(36).slice(2,8);
   const BUTIKKER={rema:"Rema 1000",netto:"Netto",brugsen:"Brugsen"};
+  // Kun administratorer må oprette/rette "Mine tilbud" – alle kan se dem
+  let ADMIN=localStorage.getItem("hs_admin")!=="0";
+  async function hentMig(){ if(!HA) return; try{ const j=await api("mig"); ADMIN=!!j.admin; try{ localStorage.setItem("hs_admin",ADMIN?"1":"0"); }catch(e){} render(); }catch(e){} }
   const butikNavn=t=>BUTIKKER[t.butik]||t.butikNavn||"Anden butik";
   const tal=n=>{ const v=Math.round((+n||0)*100)/100; return String(v).replace(".",","); };
   const kr=n=>n==null?"":(Math.round(n*100)%100? (n.toFixed(2).replace(".",",")) : String(Math.round(n)))+" kr";
@@ -295,7 +298,9 @@ body.skaerm #skaermTop{display:grid;grid-template-columns:1fr 1fr;gap:12px;margi
   }
   function flet(liste){
     if(!Array.isArray(liste)) return;
-    for(const r of liste){ if(!r||!r.id) continue; const cur=db.records[r.id]; if(!cur||(r.updated||0)>(cur.updated||0)) db.records[r.id]=r; }
+    for(const r of liste){ if(!r||!r.id) continue; const cur=db.records[r.id];
+      if(!cur||(r.updated||0)>(cur.updated||0)||(!ADMIN&&(r.kind==="mittilbud"||(cur&&cur.kind==="mittilbud")))) db.records[r.id]=r; }
+    if(!ADMIN){ const ids=new Set(liste.map(r=>r&&r.id)); for(const id of Object.keys(db.records)) if(db.records[id]&&db.records[id].kind==="mittilbud"&&!ids.has(id)) delete db.records[id]; }
   }
   function planSync(ms){ clearTimeout(syncTimer); syncTimer=setTimeout(sync,ms); }
   $("syncBar").onclick=()=>{ if(syncState.status==="login") startLogin(); else sync(); };
@@ -742,7 +747,8 @@ body.skaerm #skaermTop{display:grid;grid-template-columns:1fr 1fr;gap:12px;margi
     const l=alle("mittilbud").sort((a,b)=>String(a.til||"").localeCompare(String(b.til||"")));
     const nu=Date.now();
     aabenArk('<h2>Mine tilbud</h2><p class="muted">Personlige tilbud, fx fra Netto+ i Netto-appen. De bliver markeret på sedlen som de andre tilbud og forsvinder, når de udløber.</p>'+
-      '<form id="mineForm" class="card" autocomplete="off">'+
+      (ADMIN?'':'<p class="muted"><b>Kun administratorer kan oprette og rette tilbud.</b> Tryk på et tilbud for at se det.</p>')+
+      '<form id="mineForm" class="card'+(ADMIN?'':' hidden')+'" autocomplete="off">'+
       '<label class="btn primary" style="display:flex;align-items:center;justify-content:center;gap:8px;width:100%">📷 Tag/vælg billeder af tilbud<input type="file" accept="image/*" multiple id="mineFoto" style="display:none"></label>'+
       '<p class="muted" id="fotoStatus" style="margin:8px 0 0">Tag et billede eller vælg et skærmbillede fra Netto-appen – så udfyldes resten.</p>'+
       '<div id="fotoVis" class="hidden" style="display:flex;gap:10px;align-items:center;margin-top:8px"><img id="fotoImg" style="width:72px;height:72px;object-fit:contain;background:#fff;border-radius:10px;border:1px solid var(--soft)"><button type="button" class="btn small" id="fotoFjern">Fjern billede</button></div>'+
@@ -757,7 +763,7 @@ body.skaerm #skaermTop{display:grid;grid-template-columns:1fr 1fr;gap:12px;margi
       '<div class="knapper"><button class="btn primary">Tilføj tilbud</button></div></form>'+
       (l.length?'<div class="card">'+l.map(m=>{ const udl=m.til&&slutAfDag(m.til).getTime()<nu;
         return '<div class="fvare" data-mvis="'+esc(m.id)+'" style="cursor:pointer'+(udl?';opacity:.5':'')+'">'+(m.billede?'<img src="'+esc(m.billede)+'" alt="" style="width:48px;height:48px;object-fit:contain;border-radius:8px;background:#fff;flex:0 0 auto">':'')+'<div class="navn"><b>'+esc(m.navn)+'</b><div class="muted">'+esc(butikNavn(m))+(m.pris!=null?" · "+esc(kr(m.pris)):"")+(m.til?" · "+esc(sluttekst(m.til)):"")+(m.note?" · "+esc(m.note):"")+'</div></div>'+
-          (udl?'<button class="btn small" data-migen="'+esc(m.id)+'">↻ Igen</button>':'')+'<button class="iconbtn" data-mslet="'+esc(m.id)+'" aria-label="Slet">✕</button></div>'; }).join("")+'</div>':'')+
+          (ADMIN?(udl?'<button class="btn small" data-migen="'+esc(m.id)+'">↻ Igen</button>':'')+'<button class="iconbtn" data-mslet="'+esc(m.id)+'" aria-label="Slet">✕</button>':'')+'</div>'; }).join("")+'</div>':'')+
       '<div class="knapper"><button class="btn" id="lukA">Luk</button></div>');
     $("lukA").onclick=lukArk;
     const f=$("mineForm");
@@ -897,6 +903,13 @@ body.skaerm #skaermTop{display:grid;grid-template-columns:1fr 1fr;gap:12px;margi
   }
   function retMit(id){
     const m=get(id); if(!m) return;
+    if(!ADMIN){ const t=mineTilbud().find(x=>x.id===id)||{id,egen:true,butik:m.butik,butikNavn:m.butikNavn,titel:m.navn,tekst:m.note||"",pris:m.pris,til:m.til?slutAfDag(m.til).toISOString():null,billede:m.billede||""};
+      aabenArk((t.billede?'<img src="'+esc(t.billede)+'" alt="" style="width:100%;max-height:45vh;object-fit:contain;background:#fff;border-radius:14px">':'')+
+        '<h2 style="margin-top:12px">'+esc(t.titel)+'</h2><p class="muted">'+esc(butikNavn(t))+(m.til?' · '+esc(sluttekst(m.til)):'')+'</p>'+
+        '<div class="pris" style="font-size:28px;font-weight:750">'+esc(kr(t.pris))+'</div>'+(m.note?'<p>'+esc(m.note)+'</p>':'')+
+        '<div class="knapper"><button class="btn" id="mSeddel">Sæt på sedlen</button><button class="btn" id="lukA">Luk</button></div>');
+      $("lukA").onclick=lukArk; $("mSeddel").onclick=()=>{ tilfoejVare(m.navn); toast(m.navn+" sat på sedlen"); };
+      return; }
     aabenArk((m.billede?'<img src="'+esc(m.billede)+'" alt="" style="width:100%;max-height:40vh;object-fit:contain;background:#fff;border-radius:14px">':'')+
       '<h2 style="margin-top:12px">Mit tilbud</h2>'+
       '<label class="felt">Overskrift<input type="text" id="mNavn" value="'+esc(m.navn)+'"></label>'+
@@ -931,7 +944,7 @@ body.skaerm #skaermTop{display:grid;grid-template-columns:1fr 1fr;gap:12px;margi
     if(HA && !skuffer().length && localStorage.getItem("hs_importeret")!=="1" && syncState.status==="ok") await importer(false);
     hentTilbud();
     if(HA) hentNavneTilFjernede();
-    rydGamleMine();
+    await hentMig(); if(ADMIN) rydGamleMine();
   })();
   if("serviceWorker" in navigator&&(location.protocol==="https:"||location.hostname==="localhost")&&HA){ navigator.serviceWorker.register("sw.js").catch(()=>{}); }
 })();
