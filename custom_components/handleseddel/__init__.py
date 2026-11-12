@@ -376,8 +376,8 @@ class LaesView(HomeAssistantView):
         await self.hass.async_add_executor_job(gem)
         idag = dt.date.today()
         ugedag = ["mandag", "tirsdag", "onsdag", "torsdag", "fredag", "lørdag", "søndag"][idag.weekday()]
-        try:
-            svar = await self.hass.services.async_call(
+        async def spoerg() -> dict:
+            return await self.hass.services.async_call(
                 "ai_task", "generate_data",
                 {
                     "task_name": "Handleseddel: læs tilbud",
@@ -394,6 +394,14 @@ class LaesView(HomeAssistantView):
                 },
                 blocking=True, return_response=True,
             )
+
+        try:
+            try:
+                svar = await spoerg()
+            except Exception:  # noqa: BLE001
+                # Google svarer af og til "travlt" (503) – prøv én gang til
+                await asyncio.sleep(3)
+                svar = await spoerg()
         except Exception as e:  # noqa: BLE001
             _LOGGER.warning("AI kunne ikke læse billedet: %s", e)
             return self.json_message(f"AI kunne ikke læse billedet: {e}", 502)
