@@ -362,7 +362,7 @@ body.skaerm #skaermTop{display:grid;grid-template-columns:1fr 1fr;gap:12px;margi
       res=tilbud.filter(t=>b[t.butik]!==false && !ud.has("#"+t.id) && (!t.til||Date.parse(t.til.replace(/\+0000$/,"Z"))>nu) &&
         (passer(tokens,t.titel,ud) || (tokens.length===1&&tokens[0].length>=5&&passer(tokens,t.tekst,ud))));
       // egne (personlige) tilbud, fx fra Netto+
-      for(const m of mineTilbud()) if(!ud.has("#"+m.id)&&passer(tokens,m.titel,ud)) res.push(m);
+      for(const m of mineTilbud()) if(!ud.has("#"+m.id)&&(passer(tokens,m.titel,ud)||(m.kort&&passer(tokens,m.kort,ud)))) res.push(m);
       res.sort((a,b)=>(a.pris??1e9)-(b.pris??1e9));
     }
     matchCache.set(key,res); return res;
@@ -429,6 +429,11 @@ body.skaerm #skaermTop{display:grid;grid-template-columns:1fr 1fr;gap:12px;margi
   function flertal(e,n){ e=e||"stk"; if(e==="stk") return "stk."; if(n===1) return e; return ({pose:"poser",pakke:"pakker",bakke:"bakker",boks:"bokse","æske":"æsker",portion:"portioner",rulle:"ruller"})[e]||e; }
   function trin(e){ return e==="g"?100:(e==="kg"||e==="liter")?0.5:1; }
   const enhedValg=v=>ENHEDER.map(e=>'<option value="'+e+'"'+(e===(v||"stk")?" selected":"")+'>'+flertal(e,2)+'</option>').join("");
+  // Står varen allerede på sedlen (fx "Kaffe" når tilbuddet hedder "Gevalia Mellemristet kaffe 400 g")?
+  function paaSedlen(navn,kort){
+    return alle("vare").some(v=>{ if(v.taget) return false; const n=norm(v.navn);
+      if(n===norm(navn)||(kort&&n===norm(kort))) return true;
+      const tk=ord(v.navn); return tk.length>0&&passer(tk,navn); }); }
   function billedeFor(v){ if(v.taget) return ""; const t=tilbudFor(v.navn).find(x=>x.egen&&x.billede); return t?t.billede:""; }
   function fAntal(f){ if((!f.enhed||f.enhed==="stk")&&f.antal===1&&/\d/.test(f.navn)) return f.navn; return tal(f.antal)+" "+flertal(f.enhed,f.antal)+" "+f.navn; }
 
@@ -537,7 +542,7 @@ body.skaerm #skaermTop{display:grid;grid-template-columns:1fr 1fr;gap:12px;margi
   function visTilbud(vid){
     const v=get(vid); if(!v) return; const tb=tilbudFor(v.navn);
     aabenArk('<h2>Tilbud på '+esc(v.navn)+'</h2><p class="muted">'+tb.length+' tilbud · billigste først</p>'+
-      tb.slice(0,30).map(t=>'<div class="tilbud">'+(t.billede?'<img loading="lazy" src="'+esc(t.billede)+'" alt="">':"")+
+      tb.slice(0,30).map(t=>'<div class="tilbud" data-tdetalje="'+esc(t.id)+'" style="cursor:pointer">'+(t.billede?'<img loading="lazy" src="'+esc(t.billede)+'" alt="">':"")+
       '<div class="t"><span class="butik c-'+(BUTIKKER[t.butik]?t.butik:"anden")+'">'+esc(butikNavn(t))+(t.egen?'<span class="egen">Mit tilbud</span>':'')+'</span><b>'+esc(t.titel)+'</b><span class="muted">'+esc(periode(t))+(t.tekst?" · "+esc(t.tekst.slice(0,90))+(t.tekst.length>90?"…":""):"")+'</span></div>'+
       '<div style="text-align:right"><div class="pris">'+esc(kr(t.pris))+'</div>'+(t.foer?'<div class="muted" style="text-decoration:line-through">'+esc(kr(t.foer))+'</div>':"")+
       (t.egen?'':'<button class="btn small" style="margin-top:6px" data-ikke="'+esc(t.id)+'">Ikke den</button>')+'</div></div>').join("")+
@@ -725,7 +730,7 @@ body.skaerm #skaermTop{display:grid;grid-template-columns:1fr 1fr;gap:12px;margi
   function mineTilbud(){
     const nu=Date.now();
     return alle("mittilbud").filter(m=>{ const t=slutAfDag(m.til); return !t||t.getTime()>=nu; })
-      .map(m=>({id:m.id,egen:true,butik:m.butik,butikNavn:m.butikNavn,titel:m.navn,tekst:m.note||"",pris:m.pris,foer:null,
+      .map(m=>({id:m.id,egen:true,butik:m.butik,butikNavn:m.butikNavn,titel:m.navn,kort:m.kort||"",tekst:m.note||"",pris:m.pris,foer:null,
         fra:null,til:m.til?slutAfDag(m.til).toISOString():null,billede:m.billede||""}));
   }
   const isoDag=d=>d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0");
@@ -751,7 +756,7 @@ body.skaerm #skaermTop{display:grid;grid-template-columns:1fr 1fr;gap:12px;margi
       '<label class="toggle" style="border-top:none">Sæt varen på handlesedlen<input type="checkbox" name="paaSeddel"'+(localStorage.getItem("hs_mine_seddel")==="0"?"":" checked")+'></label>'+
       '<div class="knapper"><button class="btn primary">Tilføj tilbud</button></div></form>'+
       (l.length?'<div class="card">'+l.map(m=>{ const udl=m.til&&slutAfDag(m.til).getTime()<nu;
-        return '<div class="fvare"'+(udl?' style="opacity:.5"':'')+'>'+(m.billede?'<img src="'+esc(m.billede)+'" alt="" style="width:48px;height:48px;object-fit:contain;border-radius:8px;background:#fff;flex:0 0 auto">':'')+'<div class="navn"><b>'+esc(m.navn)+'</b><div class="muted">'+esc(butikNavn(m))+(m.pris!=null?" · "+esc(kr(m.pris)):"")+(m.til?" · "+esc(sluttekst(m.til)):"")+(m.note?" · "+esc(m.note):"")+'</div></div>'+
+        return '<div class="fvare" data-mvis="'+esc(m.id)+'" style="cursor:pointer'+(udl?';opacity:.5':'')+'">'+(m.billede?'<img src="'+esc(m.billede)+'" alt="" style="width:48px;height:48px;object-fit:contain;border-radius:8px;background:#fff;flex:0 0 auto">':'')+'<div class="navn"><b>'+esc(m.navn)+'</b><div class="muted">'+esc(butikNavn(m))+(m.pris!=null?" · "+esc(kr(m.pris)):"")+(m.til?" · "+esc(sluttekst(m.til)):"")+(m.note?" · "+esc(m.note):"")+'</div></div>'+
           (udl?'<button class="btn small" data-migen="'+esc(m.id)+'">↻ Igen</button>':'')+'<button class="iconbtn" data-mslet="'+esc(m.id)+'" aria-label="Slet">✕</button></div>'; }).join("")+'</div>':'')+
       '<div class="knapper"><button class="btn" id="lukA">Luk</button></div>');
     $("lukA").onclick=lukArk;
@@ -774,11 +779,11 @@ body.skaerm #skaermTop{display:grid;grid-template-columns:1fr 1fr;gap:12px;margi
       const pris=parseFloat(String(f.pris.value).replace(",","."));
       laer("tilbud",navn,{butik:f.butik.value,butikNavn:f.butikNavn.value.trim(),pris:isNaN(pris)?null:pris,note:f.note.value.trim(),dage:f.til.value?dageTil(f.til.value):null});
       put({id:newId("mt"),kind:"mittilbud",navn,butik:f.butik.value,butikNavn:f.butik.value==="anden"?(f.butikNavn.value.trim()||"Anden butik"):"",
-        pris:isNaN(pris)?null:pris,til:f.til.value||null,note:f.note.value.trim(),billede:fotoBillede||""});
-      fotoBillede="";
+        pris:isNaN(pris)?null:pris,til:f.til.value||null,note:f.note.value.trim(),billede:fotoBillede||"",kort:fotoKort||""});
+      const fotoKortGemt=fotoKort; fotoBillede=""; fotoKort="";
       try{ localStorage.setItem("hs_mine_seddel",f.paaSeddel.checked?"1":"0"); }catch(e){}
       let paa=false;
-      if(f.paaSeddel.checked && !alle("vare").some(v=>!v.taget&&norm(v.navn)===norm(navn))){ tilfoejVare(navn); paa=true; }
+      if(f.paaSeddel.checked && !paaSedlen(navn,fotoKortGemt)){ tilfoejVare(navn); paa=true; }
       toast(navn+" tilføjet til dine tilbud"+(paa?" og sat på sedlen":"")); visMine(); };
     document.querySelectorAll("[data-mslet]").forEach(b=>b.onclick=()=>{ const m=get(b.dataset.mslet); del(b.dataset.mslet); visMine(); if(m) toast(m.navn+" slettet",()=>put(m)); });
   }
@@ -787,7 +792,7 @@ body.skaerm #skaermTop{display:grid;grid-template-columns:1fr 1fr;gap:12px;margi
   function rydGamleMine(){ const g=Date.now()-14*24*3600*1000; alle("mittilbud").forEach(m=>{ const t=m.til&&slutAfDag(m.til); if(t&&t.getTime()<g) del(m.id); }); }
 
   // ---------- billede af tilbud → udfyld formularen (AI i Home Assistant) ----------
-  let fotoBillede="";
+  let fotoBillede="", fotoKort="";
   function indlaesBillede(fil){ return new Promise((ok,fejl)=>{ const url=URL.createObjectURL(fil); const img=new Image();
     img.onload=()=>{ URL.revokeObjectURL(url); ok(img); }; img.onerror=()=>{ URL.revokeObjectURL(url); fejl(new Error("billede")); }; img.src=url; }); }
   function tegn(img,sx,sy,sw,sh,maks,kval){ const sk=Math.min(1,maks/Math.max(sw,sh)); const c=document.createElement("canvas");
@@ -813,7 +818,7 @@ body.skaerm #skaermTop{display:grid;grid-template-columns:1fr 1fr;gap:12px;margi
       const liste=Array.isArray(j.tilbud)?j.tilbud:(j.tilbud?[j.tilbud]:[]);
       if(liste.length<=1){
         const t=liste[0]||{};
-        if(t.navn) f.navn.value=t.navn;
+        if(t.fulde_navn||t.navn) f.navn.value=t.fulde_navn||t.navn; fotoKort=(t.fulde_navn&&t.navn)?t.navn:"";
         if(typeof t.pris==="number") f.pris.value=t.pris;
         if(t.butik&&[...f.butik.options].some(o=>o.value===t.butik)){ f.butik.value=t.butik; f.butikNavn.value=t.butik_navn||""; $("andenFelt").classList.toggle("hidden",t.butik!=="anden"); }
         if(t.slutdato&&/^\d{4}-\d{2}-\d{2}$/.test(t.slutdato)){ f.til.value=t.slutdato; f.dage.value=dageTil(t.slutdato); }
@@ -826,18 +831,18 @@ body.skaerm #skaermTop{display:grid;grid-template-columns:1fr 1fr;gap:12px;margi
       const paaSeddel=f.paaSeddel.checked; let nye=0, fandtes=0;
       const aktive=mineTilbud();
       for(const t of liste){
-        const navn=String(t.navn||"").trim(); if(!navn) continue;
+        const navn=String(t.fulde_navn||t.navn||"").trim(); if(!navn) continue; const kort=(t.fulde_navn&&t.navn)?String(t.navn).trim():"";
         const butik=[...f.butik.options].some(o=>o.value===t.butik)?t.butik:"netto";
         const harBoks=[t.boks_x1,t.boks_y1,t.boks_x2,t.boks_y2].every(v=>typeof v==="number");
-        const gl=aktive.find(m=>norm(m.titel)===norm(navn)&&m.butik===butik);
+        const gl=aktive.find(m=>m.butik===butik&&(norm(m.titel)===norm(navn)||(kort&&(norm(m.titel)===norm(kort)||norm(m.kort)===norm(kort)))));
         if(gl){ fandtes++; const r=get(gl.id); if(r&&!r.billede&&harBoks){ r.billede=udsnit(img,t); put(r); } continue; }
         let til=(t.slutdato&&/^\d{4}-\d{2}-\d{2}$/.test(t.slutdato))?t.slutdato:null;
         if(!til){ const x=(laering().tilbud||{})[norm(navn)]; const d=new Date(); d.setDate(d.getDate()+((x&&x.dage>=0)?x.dage:7)); til=isoDag(d); }
         const note=[t.note,(t.foer_pris?"før "+kr(t.foer_pris):"")].filter(Boolean).join(" · ");
         const pris=typeof t.pris==="number"?t.pris:null;
-        put({id:newId("mt"),kind:"mittilbud",navn,butik,butikNavn:butik==="anden"?(t.butik_navn||"Anden butik"):"",pris,til,note,billede:harBoks?udsnit(img,t):""});
+        put({id:newId("mt"),kind:"mittilbud",navn,kort,butik,butikNavn:butik==="anden"?(t.butik_navn||"Anden butik"):"",pris,til,note,billede:harBoks?udsnit(img,t):""});
         laer("tilbud",navn,{butik,butikNavn:t.butik_navn||"",pris,note,dage:dageTil(til)});
-        if(paaSeddel&&!alle("vare").some(v=>!v.taget&&norm(v.navn)===norm(navn))) tilfoejVare(navn);
+        if(paaSeddel&&!paaSedlen(navn,kort)) tilfoejVare(navn);
         nye++;
       }
       fotoBillede="";
@@ -848,6 +853,45 @@ body.skaerm #skaermTop{display:grid;grid-template-columns:1fr 1fr;gap:12px;margi
       st.textContent=e.login?"Log ind først.":"Kunne ikke læse teksten"+(String(e.message).includes("409")?" – AI er ikke sat op i Home Assistant":"")+". Billedet er gemt – skriv vare og pris selv.";
     }
   }
+
+  // ---------- åbn et tilbud: stort billede, og ret/slet egne tilbud ----------
+  function visDetalje(id){
+    const t=tilbud.find(x=>x.id===id)||mineTilbud().find(x=>x.id===id); const m=get(id);
+    if(m&&m.kind==="mittilbud") return retMit(id);
+    if(!t) return;
+    aabenArk((t.billede?'<img src="'+esc(t.billede)+'" alt="" style="width:100%;max-height:45vh;object-fit:contain;background:#fff;border-radius:14px">':'')+
+      '<h2 style="margin-top:12px">'+esc(t.titel)+'</h2><p class="muted">'+esc(butikNavn(t))+' · '+esc(periode(t))+'</p>'+
+      '<div class="pris" style="font-size:28px;font-weight:750">'+esc(kr(t.pris))+(t.foer?' <span class="muted" style="font-size:16px;text-decoration:line-through">'+esc(kr(t.foer))+'</span>':'')+'</div>'+
+      (t.tekst?'<p>'+esc(t.tekst)+'</p>':'')+'<div class="knapper"><button class="btn" id="lukA">Luk</button></div>');
+    $("lukA").onclick=lukArk;
+  }
+  function retMit(id){
+    const m=get(id); if(!m) return;
+    aabenArk((m.billede?'<img src="'+esc(m.billede)+'" alt="" style="width:100%;max-height:40vh;object-fit:contain;background:#fff;border-radius:14px">':'')+
+      '<h2 style="margin-top:12px">Mit tilbud</h2>'+
+      '<label class="felt">Overskrift<input type="text" id="mNavn" value="'+esc(m.navn)+'"></label>'+
+      '<div class="row"><label class="felt grow">Butik<select id="mButik">'+Object.keys(BUTIKKER).map(k=>'<option value="'+k+'"'+(k===m.butik?" selected":"")+'>'+BUTIKKER[k]+'</option>').join("")+'<option value="anden"'+(m.butik==="anden"?" selected":"")+'>Anden butik</option></select></label>'+
+      '<label class="felt grow">Pris (kr)<input type="number" id="mPris" step="0.01" inputmode="decimal" value="'+(m.pris!=null?esc(m.pris):"")+'"></label></div>'+
+      '<div class="row"><label class="felt grow">Slutter om (dage)<input type="number" id="mDage" min="0" inputmode="numeric" value="'+(m.til?dageTil(m.til):"")+'"></label>'+
+      '<label class="felt grow">eller til og med<input type="date" id="mTil" value="'+esc(m.til||"")+'"></label></div>'+
+      '<label class="felt">Note<input type="text" id="mNote" value="'+esc(m.note||"")+'"></label>'+
+      '<div class="knapper"><button class="btn" id="mSeddel">Sæt på sedlen</button></div>'+
+      '<div class="knapper"><button class="btn danger" id="mSlet">Slet</button><button class="btn primary" id="mGem">Gem</button></div>'+
+      '<div class="knapper"><button class="btn" id="lukA">Luk</button></div>');
+    $("lukA").onclick=lukArk;
+    $("mDage").oninput=()=>{ const n=parseInt($("mDage").value,10); if(n>=0){ const d=new Date(); d.setDate(d.getDate()+n); $("mTil").value=isoDag(d); } };
+    $("mTil").oninput=()=>{ if($("mTil").value) $("mDage").value=dageTil($("mTil").value); };
+    $("mGem").onclick=()=>{ const n=$("mNavn").value.trim(); if(n) m.navn=n; m.butik=$("mButik").value;
+      const p=parseFloat(String($("mPris").value).replace(",",".")); m.pris=isNaN(p)?null:p; m.til=$("mTil").value||null; m.note=$("mNote").value.trim();
+      put(m); toast("Tilbuddet er gemt"); lukArk(); };
+    $("mSlet").onclick=()=>{ del(id); lukArk(); toast(m.navn+" slettet",()=>put(m)); };
+    $("mSeddel").onclick=()=>{ tilfoejVare(m.navn); toast(m.navn+" sat på sedlen"); };
+  }
+  document.addEventListener("click",e=>{
+    if(e.target.closest("button")) return;
+    const d=e.target.closest("[data-tdetalje]"); if(d){ visDetalje(d.dataset.tdetalje); return; }
+    const mv=e.target.closest("[data-mvis]"); if(mv){ retMit(mv.dataset.mvis); }
+  });
 
   // ---------- start ----------
   visFane(fane); render();
