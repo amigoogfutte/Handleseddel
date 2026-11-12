@@ -142,6 +142,7 @@ body.skaerm #skaermTop{display:grid;grid-template-columns:1fr 1fr;gap:12px;margi
       <datalist id="forslag"></datalist>
     </form>
     <div class="card" id="seddelKort"><div id="seddelListe"></div></div>
+    <div class="knapper" style="display:flex;margin-top:12px"><button class="btn" id="kopierBtn" style="flex:1">📋 Kopiér handleseddel</button></div>
     <div class="card hidden" id="kurvKort">
       <div class="sekhead"><h2 id="kurvTitel">I kurven</h2><button class="btn small" id="rydBtn">Ryd</button></div>
       <div id="kurvListe"></div>
@@ -664,6 +665,18 @@ body.skaerm #skaermTop{display:grid;grid-template-columns:1fr 1fr;gap:12px;margi
     if(m){ const n=m[2].trim(); return [n.charAt(0).toUpperCase()+n.slice(1),parseFloat(m[1]),"stk"]; }
     return [s,1,"stk"];
   }
+
+  // ---------- kopiér handleseddel ----------
+  $("kopierBtn").onclick=async()=>{
+    const l=alle("vare").filter(v=>!v.taget).sort((a,b)=>(a.oprettet||0)-(b.oprettet||0));
+    if(!l.length){ toast("Sedlen er tom"); return; }
+    const linjer=l.map(v=>{ const t=tilbudFor(v.navn)[0]; return "- "+v.navn+(t?" (tilbud: "+BUTIKKER[t.butik]+" "+kr(t.pris)+")":""); });
+    const tekst="Handleseddel\n"+linjer.join("\n");
+    let ok=false;
+    try{ await navigator.clipboard.writeText(tekst); ok=true; }catch(e){}
+    if(!ok){ try{ const ta=document.createElement("textarea"); ta.value=tekst; ta.setAttribute("readonly",""); ta.style.position="fixed"; ta.style.opacity="0"; document.body.appendChild(ta); ta.select(); ta.setSelectionRange(0,tekst.length); ok=document.execCommand("copy"); ta.remove(); }catch(e){} }
+    toast(ok?"Handlesedlen er kopieret ("+l.length+" varer)":"Kunne ikke kopiere");
+  };
 
   // ---------- start ----------
   visFane(fane); render();
