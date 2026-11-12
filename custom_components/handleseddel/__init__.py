@@ -333,10 +333,7 @@ STRUKTUR = {
     "butik_navn": {"description": "Butikkens navn hvis butik er 'anden'.", "required": False, "selector": {"text": {}}},
     "slutdato": {"description": "Sidste dag tilbuddet gælder, som ÅÅÅÅ-MM-DD. Regn den ud fra dagens dato, hvis der står fx 'slutter om 3 dage' eller 'gælder til søndag'. Tom hvis det ikke står.", "required": False, "selector": {"text": {}}},
     "note": {"description": "Kort vigtig betingelse, fx 'max 2 stk.', 'ved køb af 3', 'kræver Netto+'. Tom hvis ingen.", "required": False, "selector": {"text": {}}},
-    "boks_x1": {"description": "Venstre kant af varens produktbillede som andel af billedets bredde (0 til 1).", "required": False, "selector": {"number": {"min": 0, "max": 1, "step": 0.001, "mode": "box"}}},
-    "boks_y1": {"description": "Øverste kant af varens produktbillede som andel af billedets højde (0 til 1).", "required": False, "selector": {"number": {"min": 0, "max": 1, "step": 0.001, "mode": "box"}}},
-    "boks_x2": {"description": "Højre kant af varens produktbillede som andel af billedets bredde (0 til 1).", "required": False, "selector": {"number": {"min": 0, "max": 1, "step": 0.001, "mode": "box"}}},
-    "boks_y2": {"description": "Nederste kant af varens produktbillede som andel af billedets højde (0 til 1).", "required": False, "selector": {"number": {"min": 0, "max": 1, "step": 0.001, "mode": "box"}}},
+    "box_2d": {"description": "Produktbilledets placering som [ymin, xmin, ymax, xmax] normaliseret til 0-1000. Boksen skal stramt omslutte selve varen/pakken på billedet for netop dette tilbud – ikke tekst, pris eller hele kortet.", "required": False, "selector": {"text": {}}},
 }
 
 
@@ -376,43 +373,67 @@ class LaesView(HomeAssistantView):
         await self.hass.async_add_executor_job(gem)
         idag = dt.date.today()
         ugedag = ["mandag", "tirsdag", "onsdag", "torsdag", "fredag", "lørdag", "søndag"][idag.weekday()]
+        vedhaeft = [{"media_content_id": f"media-source://media_source/local/handleseddel/{navn}",
+                     "media_content_type": "image/jpeg"}]
+
+        async def kald(instruktion: str) -> dict:
+            async def en_gang() -> dict:
+                return await self.hass.services.async_call(
+                    "ai_task", "generate_data",
+                    {"task_name": "Handleseddel: læs tilbud", "entity_id": entiteter[0],
+                     "instructions": instruktion, "attachments": vedhaeft},
+                    blocking=True, return_response=True,
+                )
+            try:
+                return await en_gang()
+            except Exception:  # noqa: BLE001
+                # Google svarer af og til "travlt" (503) – prøv én gang til
+                await asyncio.sleep(3)
+                return await en_gang()
+
         async def spoerg() -> dict:
-            return await self.hass.services.async_call(
-                "ai_task", "generate_data",
-                {
-                    "task_name": "Handleseddel: læs tilbud",
-                    "entity_id": entiteter[0],
-                    "instructions": (
+            return await kald((
                         f"I dag er {ugedag} {idag.isoformat()}. Billedet er et tilbud fra en dansk dagligvarebutik, "
                         "ofte et skærmbillede af et personligt tilbud i Netto-appen (Netto+), eller et foto af et skilt/en avis. "
                         "Find ALLE tilbud på billedet (det kan være ét eller mange). "
                         "Svar KUN med en JSON-liste uden anden tekst, ét objekt pr. tilbud med disse felter:\n"
                         + "\n".join(f'- "{k}": {v["description"]}' for k, v in STRUKTUR.items())
                         + "\nUdelad felter, du ikke kan se. Svar på dansk. "
-                        "Boksen (boks_x1, boks_y1, boks_x2, boks_y2) skal omslutte selve produktbilledet (pakken/varen) "
-                        "for netop det tilbud, ikke tekst og pris. Tal skal være tal, ikke tekst."
-                    ),
-                    "attachments": [{"media_content_id": f"media-source://media_source/local/handleseddel/{navn}",
-                                     "media_content_type": "image/jpeg"}],
-                },
-                blocking=True, return_response=True,
-            )
+                        "Giv ALTID box_2d for hvert tilbud, hvor varen kan ses på billedet. Tal skal være tal, ikke tekst."
+                    ))
 
         try:
             try:
                 svar = await spoerg()
-            except Exception:  # noqa: BLE001
-                # Google svarer af og til "travlt" (503) – prøv én gang til
-                await asyncio.sleep(3)
-                svar = await spoerg()
-        except Exception as e:  # noqa: BLE001
-            _LOGGER.warning("AI kunne ikke læse billedet: %s", e)
-            return self.json_message(f"AI kunne ikke læse billedet: {e}", 502)
+            except Exception as e:  # noqa: BLE001
+                _LOGGER.warning("AI kunne ikke læse billedet: %s", e)
+                return self.json_message(f"AI kunne ikke læse billedet: {e}", 502)
+            liste = _laes_json_liste((svar or {}).get("data"))
+            if not liste:
+                return self.json_message("Fandt ingen tilbud på billedet", 422)
+            # Anden runde: find produktbilledet for de tilbud, der mangler en boks
+            mangler = [t for t in liste if "boks_x1" not in t]
+            if mangler:
+                navne = "\n".join(f"- {t.get('fulde_navn') or t.get('navn')}" for t in mangler)
+                try:
+                    svar2 = await kald(
+                        "Find produktbilledet (selve varen/pakken) for hver af disse varer på billedet:\n" + navne +
+                        "\nSvar KUN med en JSON-liste: [{\"navn\": \"<navnet præcis som ovenfor>\", \"box_2d\": [ymin, xmin, ymax, xmax]}] "
+                        "med koordinater normaliseret til 0-1000. Boksen skal stramt omslutte varen, ikke tekst og pris."
+                    )
+                    for b in _laes_json_liste((svar2 or {}).get("data")):
+                        if "boks_x1" not in b:
+                            continue
+                        n = str(b.get("navn") or "").strip().lower()
+                        for t in mangler:
+                            if "boks_x1" not in t and n in (str(t.get("fulde_navn") or "").strip().lower(), str(t.get("navn") or "").strip().lower()):
+                                for k in ("boks_x1", "boks_y1", "boks_x2", "boks_y2"):
+                                    t[k] = b[k]
+                                break
+                except Exception as e:  # noqa: BLE001
+                    _LOGGER.info("Kunne ikke finde varebilleder i anden runde: %s", e)
         finally:
             await self.hass.async_add_executor_job(lambda: (mappe / navn).unlink(missing_ok=True))
-        liste = _laes_json_liste((svar or {}).get("data"))
-        if not liste:
-            return self.json_message("Fandt ingen tilbud på billedet", 422)
         return self.json({"tilbud": liste})
 
 
@@ -444,6 +465,19 @@ def _laes_json_liste(data) -> list[dict]:
     for t in raw if isinstance(raw, list) else []:
         if not isinstance(t, dict) or not str(t.get("navn") or "").strip():
             continue
+        bx = t.pop("box_2d", None)
+        if isinstance(bx, str):
+            try:
+                bx = json.loads(bx)
+            except ValueError:
+                bx = [float(x) for x in re.findall(r"-?\d+(?:\.\d+)?", bx)]
+        if isinstance(bx, (list, tuple)) and len(bx) == 4:
+            try:
+                ymin, xmin, ymax, xmax = (float(x) for x in bx)
+                sk = 1000.0 if max(ymin, xmin, ymax, xmax) > 1.001 else 1.0
+                t["boks_x1"], t["boks_y1"], t["boks_x2"], t["boks_y2"] = xmin / sk, ymin / sk, xmax / sk, ymax / sk
+            except (TypeError, ValueError):
+                pass
         for k in ("pris", "foer_pris", "boks_x1", "boks_y1", "boks_x2", "boks_y2"):
             v = t.get(k)
             if isinstance(v, str):
