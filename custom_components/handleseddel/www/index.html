@@ -696,7 +696,10 @@ body.skaerm #skaermTop{display:grid;grid-template-columns:1fr 1fr;gap:12px;margi
       .map(m=>({id:m.id,egen:true,butik:m.butik,butikNavn:m.butikNavn,titel:m.navn,tekst:m.note||"",pris:m.pris,foer:null,
         fra:null,til:m.til?slutAfDag(m.til).toISOString():null,billede:""}));
   }
-  function naesteSoendag(){ const d=new Date(); d.setDate(d.getDate()+((7-d.getDay())%7||7)); return d.toISOString().slice(0,10); }
+  const isoDag=d=>d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0");
+  function naesteSoendag(){ const d=new Date(); d.setDate(d.getDate()+((7-d.getDay())%7||7)); return isoDag(d); }
+  function dageTil(iso){ const t=new Date(iso+"T00:00:00"), n=new Date(); n.setHours(0,0,0,0); return Math.round((t-n)/864e5); }
+  function sluttekst(iso){ const n=dageTil(iso); return n<0?"udløbet":n===0?"slutter i dag":n===1?"slutter i morgen":"slutter om "+n+" dage ("+dagTekst(iso)+")"; }
   function dagTekst(iso){ const d=slutAfDag(iso); return d?d.toLocaleDateString("da-DK",{weekday:"short",day:"numeric",month:"short"}):""; }
   function visMine(){
     const l=alle("mittilbud").sort((a,b)=>String(a.til||"").localeCompare(String(b.til||"")));
@@ -707,16 +710,19 @@ body.skaerm #skaermTop{display:grid;grid-template-columns:1fr 1fr;gap:12px;margi
       '<div class="row"><label class="felt grow">Butik<select name="butik">'+Object.keys(BUTIKKER).map(k=>'<option value="'+k+'"'+(k==="netto"?" selected":"")+'>'+BUTIKKER[k]+'</option>').join("")+'<option value="anden">Anden butik …</option></select></label>'+
       '<label class="felt grow">Pris (kr)<input type="number" name="pris" step="0.01" min="0" inputmode="decimal" placeholder="35"></label></div>'+
       '<label class="felt hidden" id="andenFelt">Butikkens navn<input type="text" name="butikNavn" placeholder="fx Lidl"></label>'+
-      '<div class="row"><label class="felt grow">Gælder til og med<input type="date" name="til" value="'+naesteSoendag()+'"></label>'+
-      '<label class="felt grow">Note<input type="text" name="note" placeholder="fx max 2 stk."></label></div>'+
+      '<div class="row"><label class="felt grow">Slutter om (dage)<input type="number" name="dage" min="0" step="1" inputmode="numeric" value="'+dageTil(naesteSoendag())+'"></label>'+
+      '<label class="felt grow">eller gælder til og med<input type="date" name="til" value="'+naesteSoendag()+'"></label></div>'+
+      '<label class="felt">Note<input type="text" name="note" placeholder="fx max 2 stk."></label>'+
       '<div class="knapper"><button class="btn primary">Tilføj tilbud</button></div></form>'+
       (l.length?'<div class="card">'+l.map(m=>{ const udl=m.til&&slutAfDag(m.til).getTime()<nu;
-        return '<div class="fvare"'+(udl?' style="opacity:.5"':'')+'><div class="navn"><b>'+esc(m.navn)+'</b><div class="muted">'+esc(butikNavn(m))+(m.pris!=null?" · "+esc(kr(m.pris)):"")+(m.til?" · "+(udl?"udløbet ":"til ")+esc(dagTekst(m.til)):"")+(m.note?" · "+esc(m.note):"")+'</div></div>'+
+        return '<div class="fvare"'+(udl?' style="opacity:.5"':'')+'><div class="navn"><b>'+esc(m.navn)+'</b><div class="muted">'+esc(butikNavn(m))+(m.pris!=null?" · "+esc(kr(m.pris)):"")+(m.til?" · "+esc(sluttekst(m.til)):"")+(m.note?" · "+esc(m.note):"")+'</div></div>'+
           '<button class="iconbtn" data-mslet="'+esc(m.id)+'" aria-label="Slet">✕</button></div>'; }).join("")+'</div>':'')+
       '<div class="knapper"><button class="btn" id="lukA">Luk</button></div>');
     $("lukA").onclick=lukArk;
     const f=$("mineForm");
     f.butik.onchange=()=>$("andenFelt").classList.toggle("hidden",f.butik.value!=="anden");
+    f.dage.oninput=()=>{ const n=parseInt(f.dage.value,10); if(n>=0){ const d=new Date(); d.setDate(d.getDate()+n); f.til.value=isoDag(d); } };
+    f.til.oninput=()=>{ if(f.til.value) f.dage.value=dageTil(f.til.value); };
     f.onsubmit=e=>{ e.preventDefault();
       const navn=f.navn.value.trim(); if(!navn) return;
       const pris=parseFloat(String(f.pris.value).replace(",","."));
