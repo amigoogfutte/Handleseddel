@@ -305,18 +305,41 @@ body.skaerm #skaermTop{display:grid;grid-template-columns:1fr 1fr;gap:12px;margi
   const norm=s=>String(s||"").toLowerCase().replace(/[^a-zæøåéü0-9]+/g," ").trim();
   function ord(s){ return norm(s).split(" ").filter(w=>w&&!STOP.has(w)&&!/^\d+$/.test(w)); }
   function stamme(w){ return w.length>=6? w.replace(/(erne|ene|er|e|r)$/,""): w; }
-  function passer(tokens,tekst){
+  // Sammensatte ord, der er en anden vare: "kakaomælk" er ikke "mælk", "havregryn" er ikke "gryn".
+  const ANDET=["kakao","cacao","choko","chokolade","jordbær","vanilje","kaffe","karamel","banan","protein","havre","soja","mandel","kokos","ris","kærne","kondens","frugt","smag","is","hindbær","blåbær","lakrids","mokka","latte","energi"];
+  const EFTER=["snitte","chokolade","pulver","karamel","bolle","kage","kiks","slik","is","drik","creme","sauce"];
+  function ordPasser(w,t){
+    if(t.length<=3) return w===t;
+    const st=stamme(t); const i=w.indexOf(st);
+    if(i<0) return false;
+    if(i>0){ const forled=w.slice(0,i); if(ANDET.some(a=>forled===a||forled.endsWith(a))) return false; }
+    const efterled=w.slice(i+st.length).replace(/^(e|s|es)(?=..)/,"");
+    if(efterled&&EFTER.some(e=>efterled===e||efterled.startsWith(e))) return false;
+    return true;
+  }
+  function passer(tokens,tekst,udeluk){
     const ws=norm(tekst).split(" ");
-    return tokens.every(t=> t.length<=3 ? ws.includes(t) : ws.some(w=>w.includes(stamme(t))));
+    return tokens.every(t=>ws.some(w=>ordPasser(w,t)&&!(udeluk&&udeluk.has(w))));
+  }
+  // Tilbud brugeren har sagt "ikke den" til, pr. vare. Deles mellem alle enheder.
+  function udelukFor(navn){ const r=get("udeluk"); const l=(r&&r.ord&&r.ord[norm(navn)])||[]; return new Set(l); }
+  function udeluk(navn,t){
+    const r=get("udeluk")||{id:"udeluk",kind:"udeluk",ord:{}}; r.ord=r.ord||{};
+    const key=norm(navn); const l=new Set(r.ord[key]||[]);
+    const tokens=ord(navn); const ws=norm(t.titel).split(" ");
+    const sammensat=ws.filter(w=>tokens.some(tk=>ordPasser(w,tk)&&w!==tk));
+    if(sammensat.length) sammensat.forEach(w=>l.add(w)); else l.add("#"+t.id);
+    r.ord[key]=[...l]; put(r); matchCache.clear();
+    return sammensat.length?sammensat.join(", "):t.titel;
   }
   const matchCache=new Map();
   function tilbudFor(navn){
     const key=norm(navn); if(matchCache.has(key)) return matchCache.get(key);
     const tokens=ord(navn); let res=[];
     if(tokens.length){
-      const nu=Date.now(); const b=indst().butikker||{};
-      res=tilbud.filter(t=>b[t.butik]!==false && (!t.til||Date.parse(t.til.replace(/\+0000$/,"Z"))>nu) &&
-        (passer(tokens,t.titel) || (tokens.length===1&&tokens[0].length>=5&&passer(tokens,t.tekst))));
+      const nu=Date.now(); const b=indst().butikker||{}; const ud=udelukFor(navn);
+      res=tilbud.filter(t=>b[t.butik]!==false && !ud.has("#"+t.id) && (!t.til||Date.parse(t.til.replace(/\+0000$/,"Z"))>nu) &&
+        (passer(tokens,t.titel,ud) || (tokens.length===1&&tokens[0].length>=5&&passer(tokens,t.tekst,ud))));
       res.sort((a,b)=>(a.pris??1e9)-(b.pris??1e9));
     }
     matchCache.set(key,res); return res;
@@ -457,9 +480,17 @@ body.skaerm #skaermTop{display:grid;grid-template-columns:1fr 1fr;gap:12px;margi
     aabenArk('<h2>Tilbud på '+esc(v.navn)+'</h2><p class="muted">'+tb.length+' tilbud · billigste først</p>'+
       tb.slice(0,30).map(t=>'<div class="tilbud">'+(t.billede?'<img loading="lazy" src="'+esc(t.billede)+'" alt="">':"")+
       '<div class="t"><span class="butik c-'+t.butik+'">'+esc(BUTIKKER[t.butik])+'</span><b>'+esc(t.titel)+'</b><span class="muted">'+esc(periode(t))+(t.tekst?" · "+esc(t.tekst.slice(0,90))+(t.tekst.length>90?"…":""):"")+'</span></div>'+
-      '<div style="text-align:right"><div class="pris">'+esc(kr(t.pris))+'</div>'+(t.foer?'<div class="muted" style="text-decoration:line-through">'+esc(kr(t.foer))+'</div>':"")+'</div></div>').join("")+
+      '<div style="text-align:right"><div class="pris">'+esc(kr(t.pris))+'</div>'+(t.foer?'<div class="muted" style="text-decoration:line-through">'+esc(kr(t.foer))+'</div>':"")+
+      '<button class="btn small" style="margin-top:6px" data-ikke="'+esc(t.id)+'">Ikke den</button></div></div>').join("")+
+      (udelukFor(v.navn).size?'<div class="knapper"><button class="btn small" id="nulstil">Vis skjulte tilbud igen</button></div>':"")+
       '<div class="knapper"><button class="btn" id="lukA">Luk</button></div>');
     $("lukA").onclick=lukArk;
+    document.querySelectorAll("[data-ikke]").forEach(btn=>btn.onclick=()=>{
+      const t=tb.find(x=>x.id===btn.dataset.ikke); if(!t) return;
+      const hvad=udeluk(v.navn,t); toast("Viser ikke "+hvad+" ved "+v.navn);
+      if(tilbudFor(v.navn).length) visTilbud(vid); else lukArk();
+    });
+    const nb=$("nulstil"); if(nb) nb.onclick=()=>{ const r=get("udeluk"); if(r&&r.ord){ delete r.ord[norm(v.navn)]; put(r); matchCache.clear(); } visTilbud(vid); };
   }
   function visFrysFor(vid){
     const v=get(vid); if(!v) return; const fr=frysFor(v.navn);
