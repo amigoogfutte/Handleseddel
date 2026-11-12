@@ -58,6 +58,7 @@ input[type=text],input[type=search],input[type=number],input[type=date],select{w
 .pille.b-rema{background:#E7EEF8;color:var(--rema)}
 .pille.b-netto{background:#FFF6CC;color:var(--netto)}
 .pille.b-brugsen{background:#FBE9E7;color:var(--brugsen)}
+.pille.ofte{background:#fff;border-color:var(--line);font-weight:550}
 .pille.b-anden{background:#EEE8F6;color:#5B3E8A}
 .c-anden{color:#5B3E8A}
 .egen{font-size:11px;font-weight:700;background:#FFF1C2;color:#6B5200;border-radius:8px;padding:2px 7px;margin-left:6px;text-transform:none;letter-spacing:0}
@@ -143,6 +144,8 @@ body.skaerm #skaermTop{display:grid;grid-template-columns:1fr 1fr;gap:12px;margi
         <button class="btn primary" type="submit">Tilføj</button>
       </div>
       <datalist id="forslag"></datalist>
+      <datalist id="mineForslag"></datalist>
+      <div class="info" id="ofte" style="margin-top:8px"></div>
     </form>
     <div class="card" id="seddelKort"><div id="seddelListe"></div></div>
     <div class="knapper" style="display:flex;margin-top:12px"><button class="btn" id="kopierBtn" style="flex:1">📋 Kopiér handleseddel</button></div>
@@ -399,7 +402,11 @@ body.skaerm #skaermTop{display:grid;grid-template-columns:1fr 1fr;gap:12px;margi
     // forslag: tidligere varer + fryservarer
     const navne=new Set(); varer.forEach(v=>navne.add(v.navn)); alle("frys").forEach(f=>navne.add(f.navn));
     alle("historik").forEach(h=>navne.add(h.navn));
-    $("forslag").innerHTML=[...navne].sort((a,b)=>a.localeCompare(b,"da")).map(n=>'<option value="'+esc(n)+'">').join("");
+    const hyppig={}; alle("historik").forEach(h=>{ hyppig[norm(h.navn)]=h.n||0; });
+    $("forslag").innerHTML=[...navne].sort((a,b)=>(hyppig[norm(b)]||0)-(hyppig[norm(a)]||0)||a.localeCompare(b,"da")).map(n=>'<option value="'+esc(n)+'">').join("");
+    const lt=laering().tilbud||{};
+    $("mineForslag").innerHTML=Object.values(lt).sort((a,b)=>b.t-a.t).map(x=>'<option value="'+esc(x.navn)+'">').join("");
+    renderOfte();
     const b=indst().butikker||{}; const valgte=Object.keys(BUTIKKER).filter(k=>b[k]!==false).map(k=>BUTIKKER[k]);
     $("tilbudInfo").textContent=HA?(tilbudHentet?"Tilbud fra "+valgte.join(", ")+" · hentet "+new Date(tilbudHentet).toLocaleString("da-DK",{weekday:"short",hour:"2-digit",minute:"2-digit"}):"Henter tilbud …"):"";
   }
@@ -433,7 +440,7 @@ body.skaerm #skaermTop{display:grid;grid-template-columns:1fr 1fr;gap:12px;margi
   document.addEventListener("click",e=>{
     const el=e.target.closest("[data-tjek],[data-ret],[data-tilbud],[data-frys],[data-plus],[data-minus],[data-fret],[data-nyfrys]");
     if(!el) return;
-    if(el.dataset.tjek){ const v=get(el.dataset.tjek); if(!v) return; v.taget=!v.taget; v.tagetTid=Date.now(); put(v); }
+    if(el.dataset.tjek){ const v=get(el.dataset.tjek); if(!v) return; v.taget=!v.taget; v.tagetTid=Date.now(); put(v); if(v.taget) husk(v.navn,true); }
     else if(el.dataset.ret) retVare(el.dataset.ret);
     else if(el.dataset.tilbud) visTilbud(el.dataset.tilbud);
     else if(el.dataset.frys) visFrysFor(el.dataset.frys);
@@ -442,8 +449,22 @@ body.skaerm #skaermTop{display:grid;grid-template-columns:1fr 1fr;gap:12px;margi
     else if(el.dataset.fret) retFrys(el.dataset.fret);
     else if(el.dataset.nyfrys) nyFrysForm(el.dataset.nyfrys);
   });
-  $("rydBtn").onclick=()=>{ const t=alle("vare").filter(v=>v.taget); t.forEach(v=>{ husk(v.navn); del(v.id); }); toast("Kurven er ryddet",()=>{ t.forEach(v=>{ v.taget=true; put(v); }); }); };
-  function husk(navn){ const id="h-"+norm(navn).replace(/ /g,"_").slice(0,100); if(id.length<4) return; if(!get(id)) put({id,kind:"historik",navn}); }
+  $("rydBtn").onclick=()=>{ const t=alle("vare").filter(v=>v.taget); t.forEach(v=>{ husk(v.navn,false); del(v.id); }); toast("Kurven er ryddet",()=>{ t.forEach(v=>{ v.taget=true; put(v); }); }); };
+  // Husker varer og hvor tit de bliver købt, så de oftest købte kan tilføjes med ét tryk.
+  function husk(navn,koebt){ const id="h-"+norm(navn).replace(/ /g,"_").slice(0,100); if(id.length<4) return;
+    const h=get(id)||{id,kind:"historik",navn,n:0}; if(koebt){ h.n=(h.n||0)+1; h.sidst=Date.now(); h.navn=navn; put(h); } else if(!get(id)) put(h); }
+  function renderOfte(){
+    const paa=new Set(alle("vare").filter(v=>!v.taget).map(v=>norm(v.navn)));
+    const l=alle("historik").filter(h=>(h.n||0)>0&&!paa.has(norm(h.navn)))
+      .sort((a,b)=>(b.n||0)-(a.n||0)||(b.sidst||0)-(a.sidst||0)).slice(0,10);
+    $("ofte").innerHTML=l.map(h=>'<span class="pille ofte" data-ofte="'+esc(h.navn)+'">+ '+esc(h.navn)+'</span>').join("");
+  }
+  document.addEventListener("click",e=>{ const b=e.target.closest("[data-ofte]"); if(!b) return; tilfoejVare(b.dataset.ofte); });
+  // Fælles hukommelse for alle enheder: sidste enhed/antal pr. fryservare og sidste værdier pr. eget tilbud.
+  function laering(){ return get("laering")||{id:"laering",kind:"laering",frys:{},tilbud:{}}; }
+  function laer(del2,navn,val){ const r=laering(); r[del2]=r[del2]||{}; r[del2][norm(navn)]=Object.assign({},val,{navn,t:Date.now()});
+    const keys=Object.keys(r[del2]); if(keys.length>400){ keys.sort((a,b)=>r[del2][a].t-r[del2][b].t).slice(0,keys.length-400).forEach(k=>delete r[del2][k]); }
+    put(r); }
 
   // ---------- fryser ----------
   function skuffer(){ return alle("skuffe").sort((a,b)=>(a.orden||0)-(b.orden||0)); }
@@ -474,11 +495,19 @@ body.skaerm #skaermTop{display:grid;grid-template-columns:1fr 1fr;gap:12px;margi
   }
   $("frysSoeg").oninput=renderFryser;
   function nyFrysForm(id){ aabenNy=id; renderFryser(); const f=document.querySelector('.nyfrys input[name=navn]'); if(f) f.focus(); }
+  // Når en kendt vare skrives, foreslås samme enhed og antal som sidst
+  document.addEventListener("input",e=>{
+    const i=e.target; if(!(i.name==="navn"&&i.closest(".nyfrys"))) return;
+    const f=i.closest(".nyfrys"); const x=(laering().frys||{})[norm(i.value)]
+      || (()=>{ const g=alle("frys").concat(fjernede()).find(r=>norm(r.navn)===norm(i.value)); return g?{enhed:g.enhed||"stk",antal:1}:null; })();
+    if(x){ f.enhed.value=x.enhed||"stk"; if(x.antal) f.antal.value=x.antal; }
+  });
   document.addEventListener("submit",e=>{
     const f=e.target.closest(".nyfrys"); if(!f) return; e.preventDefault();
     const navn=f.navn.value.trim(); const antal=parseFloat(String(f.antal.value).replace(",","."))||1; if(!navn) return;
     const sk=f.dataset.skuffe;
     const enhed=f.enhed.value||"stk";
+    laer("frys",navn,{enhed,antal,skuffe:sk});
     const findes=alle("frys").find(x=>x.skuffe===sk&&norm(x.navn)===norm(navn)&&(x.enhed||"stk")===enhed);
     aabenNy=null; f.remove();
     if(findes){ findes.antal=(findes.antal||0)+antal; findes.lagtInd=Date.now(); put(findes); }
@@ -706,7 +735,7 @@ body.skaerm #skaermTop{display:grid;grid-template-columns:1fr 1fr;gap:12px;margi
     const nu=Date.now();
     aabenArk('<h2>Mine tilbud</h2><p class="muted">Personlige tilbud, fx fra Netto+ i Netto-appen. De bliver markeret på sedlen som de andre tilbud og forsvinder, når de udløber.</p>'+
       '<form id="mineForm" class="card" autocomplete="off">'+
-      '<label class="felt">Vare<input type="text" name="navn" placeholder="fx Kaffe" list="forslag" required></label>'+
+      '<label class="felt">Vare<input type="text" name="navn" placeholder="fx Kaffe" list="mineForslag" required></label>'+
       '<div class="row"><label class="felt grow">Butik<select name="butik">'+Object.keys(BUTIKKER).map(k=>'<option value="'+k+'"'+(k==="netto"?" selected":"")+'>'+BUTIKKER[k]+'</option>').join("")+'<option value="anden">Anden butik …</option></select></label>'+
       '<label class="felt grow">Pris (kr)<input type="number" name="pris" step="0.01" min="0" inputmode="decimal" placeholder="35"></label></div>'+
       '<label class="felt hidden" id="andenFelt">Butikkens navn<input type="text" name="butikNavn" placeholder="fx Lidl"></label>'+
@@ -716,16 +745,24 @@ body.skaerm #skaermTop{display:grid;grid-template-columns:1fr 1fr;gap:12px;margi
       '<div class="knapper"><button class="btn primary">Tilføj tilbud</button></div></form>'+
       (l.length?'<div class="card">'+l.map(m=>{ const udl=m.til&&slutAfDag(m.til).getTime()<nu;
         return '<div class="fvare"'+(udl?' style="opacity:.5"':'')+'><div class="navn"><b>'+esc(m.navn)+'</b><div class="muted">'+esc(butikNavn(m))+(m.pris!=null?" · "+esc(kr(m.pris)):"")+(m.til?" · "+esc(sluttekst(m.til)):"")+(m.note?" · "+esc(m.note):"")+'</div></div>'+
-          '<button class="iconbtn" data-mslet="'+esc(m.id)+'" aria-label="Slet">✕</button></div>'; }).join("")+'</div>':'')+
+          (udl?'<button class="btn small" data-migen="'+esc(m.id)+'">↻ Igen</button>':'')+'<button class="iconbtn" data-mslet="'+esc(m.id)+'" aria-label="Slet">✕</button></div>'; }).join("")+'</div>':'')+
       '<div class="knapper"><button class="btn" id="lukA">Luk</button></div>');
     $("lukA").onclick=lukArk;
     const f=$("mineForm");
     f.butik.onchange=()=>$("andenFelt").classList.toggle("hidden",f.butik.value!=="anden");
     f.dage.oninput=()=>{ const n=parseInt(f.dage.value,10); if(n>=0){ const d=new Date(); d.setDate(d.getDate()+n); f.til.value=isoDag(d); } };
     f.til.oninput=()=>{ if(f.til.value) f.dage.value=dageTil(f.til.value); };
+    f.navn.oninput=()=>{ const x=(laering().tilbud||{})[norm(f.navn.value)]; if(!x) return;
+      f.butik.value=x.butik||"netto"; f.butikNavn.value=x.butikNavn||""; $("andenFelt").classList.toggle("hidden",f.butik.value!=="anden");
+      if(x.pris!=null) f.pris.value=x.pris; f.note.value=x.note||"";
+      if(x.dage!=null&&x.dage>=0){ f.dage.value=x.dage; f.dage.oninput(); } };
+    document.querySelectorAll("[data-migen]").forEach(b=>b.onclick=()=>{ const m=get(b.dataset.migen); if(!m) return;
+      const x=(laering().tilbud||{})[norm(m.navn)]; const d=new Date(); d.setDate(d.getDate()+((x&&x.dage>=0)?x.dage:7));
+      put(Object.assign({},m,{id:newId("mt"),til:isoDag(d)})); del(m.id); toast(m.navn+" tilføjet igen"); visMine(); });
     f.onsubmit=e=>{ e.preventDefault();
       const navn=f.navn.value.trim(); if(!navn) return;
       const pris=parseFloat(String(f.pris.value).replace(",","."));
+      laer("tilbud",navn,{butik:f.butik.value,butikNavn:f.butikNavn.value.trim(),pris:isNaN(pris)?null:pris,note:f.note.value.trim(),dage:f.til.value?dageTil(f.til.value):null});
       put({id:newId("mt"),kind:"mittilbud",navn,butik:f.butik.value,butikNavn:f.butik.value==="anden"?(f.butikNavn.value.trim()||"Anden butik"):"",
         pris:isNaN(pris)?null:pris,til:f.til.value||null,note:f.note.value.trim()});
       toast(navn+" tilføjet til dine tilbud"); visMine(); };
