@@ -322,6 +322,89 @@ class TilbudView(HomeAssistantView):
         return self.json(d)
 
 
+# --- læs et tilbud fra et billede med Home Assistants AI-opgave (fx Google Gemini) ---
+
+STRUKTUR = {
+    "navn": {"description": "Varens navn kort og som man ville skrive det på en indkøbsliste, fx 'Kaffe' eller 'Hakket oksekød'. Uden mærke, medmindre mærket er det vigtige.", "required": True, "selector": {"text": {}}},
+    "fulde_navn": {"description": "Varens fulde navn som det står på tilbuddet, med mærke og størrelse.", "required": False, "selector": {"text": {}}},
+    "pris": {"description": "Tilbudsprisen i kroner som tal, fx 35 eller 9.95. Tom hvis den ikke kan ses.", "required": False, "selector": {"number": {"mode": "box", "step": 0.01}}},
+    "foer_pris": {"description": "Normalprisen/førprisen i kroner, hvis den står der.", "required": False, "selector": {"number": {"mode": "box", "step": 0.01}}},
+    "butik": {"description": "Butikken: 'netto', 'rema', 'brugsen' eller 'anden'. Netto+ og personlige tilbud i Netto-appen er 'netto'.", "required": False, "selector": {"select": {"options": ["netto", "rema", "brugsen", "anden"]}}},
+    "butik_navn": {"description": "Butikkens navn hvis butik er 'anden'.", "required": False, "selector": {"text": {}}},
+    "slutdato": {"description": "Sidste dag tilbuddet gælder, som ÅÅÅÅ-MM-DD. Regn den ud fra dagens dato, hvis der står fx 'slutter om 3 dage' eller 'gælder til søndag'. Tom hvis det ikke står.", "required": False, "selector": {"text": {}}},
+    "note": {"description": "Kort vigtig betingelse, fx 'max 2 stk.', 'ved køb af 3', 'kræver Netto+'. Tom hvis ingen.", "required": False, "selector": {"text": {}}},
+    "boks_x1": {"description": "Venstre kant af varens produktbillede som andel af billedets bredde (0 til 1).", "required": False, "selector": {"number": {"min": 0, "max": 1, "step": 0.001, "mode": "box"}}},
+    "boks_y1": {"description": "Øverste kant af varens produktbillede som andel af billedets højde (0 til 1).", "required": False, "selector": {"number": {"min": 0, "max": 1, "step": 0.001, "mode": "box"}}},
+    "boks_x2": {"description": "Højre kant af varens produktbillede som andel af billedets bredde (0 til 1).", "required": False, "selector": {"number": {"min": 0, "max": 1, "step": 0.001, "mode": "box"}}},
+    "boks_y2": {"description": "Nederste kant af varens produktbillede som andel af billedets højde (0 til 1).", "required": False, "selector": {"number": {"min": 0, "max": 1, "step": 0.001, "mode": "box"}}},
+}
+
+
+class LaesView(HomeAssistantView):
+    """POST {"billede": "<base64 jpeg>"}: læs vare, pris, slutdato og produktbilledets placering."""
+
+    url = "/api/handleseddel/laes"
+    name = "api:handleseddel:laes"
+    requires_auth = True
+
+    def __init__(self, hass: HomeAssistant) -> None:
+        self.hass = hass
+
+    async def post(self, request: web.Request) -> web.Response:
+        import base64
+        import datetime as dt
+        import uuid
+
+        entiteter = self.hass.states.async_entity_ids("ai_task")
+        if not entiteter:
+            return self.json_message("Ingen AI sat op i Home Assistant (fx Google Gemini).", 409)
+        body = await request.read()
+        if len(body) > 8 * 1024 * 1024:
+            return self.json_message("Billedet er for stort", 413)
+        try:
+            raw = base64.b64decode(json.loads(body)["billede"].split(",")[-1])
+        except (ValueError, KeyError, TypeError):
+            return self.json_message("Ugyldigt billede", 400)
+        media_root = Path(self.hass.config.media_dirs.get("local") or self.hass.config.path("media"))
+        mappe = media_root / "handleseddel"
+        navn = f"{uuid.uuid4().hex}.jpg"
+
+        def gem() -> None:
+            mappe.mkdir(parents=True, exist_ok=True)
+            (mappe / navn).write_bytes(raw)
+
+        await self.hass.async_add_executor_job(gem)
+        idag = dt.date.today()
+        ugedag = ["mandag", "tirsdag", "onsdag", "torsdag", "fredag", "lørdag", "søndag"][idag.weekday()]
+        try:
+            svar = await self.hass.services.async_call(
+                "ai_task", "generate_data",
+                {
+                    "task_name": "Handleseddel: læs tilbud",
+                    "entity_id": entiteter[0],
+                    "instructions": (
+                        f"I dag er {ugedag} {idag.isoformat()}. Billedet er et tilbud fra en dansk dagligvarebutik, "
+                        "ofte et skærmbillede af et personligt tilbud i Netto-appen (Netto+), eller et foto af et skilt/en avis. "
+                        "Find det ene tilbud, der er i fokus, og udfyld felterne. Svar på dansk. "
+                        "Boksen skal omslutte selve produktbilledet (pakken/varen), ikke tekst og pris."
+                    ),
+                    "structure": STRUKTUR,
+                    "attachments": [{"media_content_id": f"media-source://media_source/local/handleseddel/{navn}",
+                                     "media_content_type": "image/jpeg"}],
+                },
+                blocking=True, return_response=True,
+            )
+        except Exception as e:  # noqa: BLE001
+            _LOGGER.warning("AI kunne ikke læse billedet: %s", e)
+            return self.json_message(f"AI kunne ikke læse billedet: {e}", 502)
+        finally:
+            await self.hass.async_add_executor_job(lambda: (mappe / navn).unlink(missing_ok=True))
+        data = (svar or {}).get("data")
+        if not isinstance(data, dict):
+            return self.json_message("AI gav intet svar", 502)
+        return self.json({"tilbud": data})
+
+
 class AppRedirectView(HomeAssistantView):
     """Kort adresse: /handleseddel-start → appen."""
 
@@ -343,7 +426,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         # HTTP-ruter kan ikke fjernes igen, så de registreres kun én gang pr. opstart.
         await hass.http.async_register_static_paths([StaticPathConfig(APP_URL, str(WWW), False)])
         tilbud = Tilbud(hass, store)
-        for view in (SyncView(hass, store), ImportView(hass, store), TilbudView(tilbud), AppRedirectView()):
+        for view in (SyncView(hass, store), ImportView(hass, store), TilbudView(tilbud), LaesView(hass), AppRedirectView()):
             hass.http.register_view(view)
         data["http_registered"] = True
 
