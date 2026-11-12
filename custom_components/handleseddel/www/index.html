@@ -71,7 +71,10 @@ input[type=text],input[type=search],input[type=number],select{width:100%;min-hei
 .rund{width:42px;height:42px;border-radius:21px;border:1px solid var(--line);background:#fff;font-size:22px;font-weight:600;cursor:pointer;flex:0 0 auto;display:flex;align-items:center;justify-content:center}
 .rund.plus{background:var(--frost);border-color:#C7DEEA;color:var(--frost-ink)}
 .nyfrys{display:flex;gap:8px;margin-top:8px}
-.nyfrys input[type=number]{width:76px;flex:0 0 auto;text-align:center}
+.nyfrys{flex-wrap:wrap}
+.nyfrys input[name=navn]{flex:1 1 100%}
+.nyfrys input[type=number]{width:84px;flex:0 0 auto;text-align:center}
+.nyfrys select{width:auto;flex:1 1 110px}
 
 /* Faner i bunden */
 nav.tabs{position:fixed;left:0;right:0;bottom:0;z-index:10;display:flex;justify-content:center;gap:8px;padding:8px 16px calc(8px + env(safe-area-inset-bottom));background:rgba(244,245,242,.96);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);border-top:1px solid var(--soft)}
@@ -394,8 +397,11 @@ body.skaerm #skaermTop{display:grid;grid-template-columns:1fr 1fr;gap:12px;margi
     return '<div class="vare'+(v.taget?" taget":"")+'"><button class="tjek" data-tjek="'+esc(v.id)+'" aria-label="Afkryds">'+(v.taget?"✓":"")+'</button>'+
       '<div class="indhold"><div class="navn" data-ret="'+esc(v.id)+'">'+esc(v.navn)+'</div>'+(info?'<div class="info">'+info+'</div>':"")+'</div></div>';
   }
-  function flertal(e,n){ if(n===1||!e) return e; return ({pose:"poser",pakke:"pakker",bakke:"bakker","æske":"æsker"})[e]||e; }
-  function fAntal(f){ const n=tal(f.antal); if(!f.enhed) return f.antal===1&&/\d/.test(f.navn)?f.navn:(n+" × "+f.navn); return n+" "+(f.enhed==="pose"&&f.antal!==1?"poser":f.enhed==="pakke"&&f.antal!==1?"pakker":f.enhed)+" "+f.navn; }
+  const ENHEDER=["stk","pose","pakke","bakke","boks","æske","portion","kg","g","liter","dl","rulle","glas"];
+  function flertal(e,n){ e=e||"stk"; if(e==="stk") return "stk."; if(n===1) return e; return ({pose:"poser",pakke:"pakker",bakke:"bakker",boks:"bokse","æske":"æsker",portion:"portioner",rulle:"ruller"})[e]||e; }
+  function trin(e){ return e==="g"?100:(e==="kg"||e==="liter")?0.5:1; }
+  const enhedValg=v=>ENHEDER.map(e=>'<option value="'+e+'"'+(e===(v||"stk")?" selected":"")+'>'+flertal(e,2)+'</option>').join("");
+  function fAntal(f){ if((!f.enhed||f.enhed==="stk")&&f.antal===1&&/\d/.test(f.navn)) return f.navn; return tal(f.antal)+" "+flertal(f.enhed,f.antal)+" "+f.navn; }
 
   $("addForm").onsubmit=e=>{ e.preventDefault(); const n=$("addInput").value.trim(); if(!n) return; tilfoejVare(n); $("addInput").value=""; };
   function tilfoejVare(n){
@@ -434,9 +440,9 @@ body.skaerm #skaermTop{display:grid;grid-template-columns:1fr 1fr;gap:12px;margi
       items.sort((a,b)=>a.navn.localeCompare(b.navn,"da"));
       html+='<div class="card skuffe"><div class="sekhead"><h2>'+esc(s.navn)+'</h2><span class="muted">'+items.length+(items.length===1?' vare':' varer')+'</span></div>';
       html+=items.map(f=>'<div class="fvare"><button class="rund" data-minus="'+esc(f.id)+'" aria-label="Tag én ud">−</button>'+
-        '<div class="navn" data-fret="'+esc(f.id)+'">'+esc(f.navn)+'</div><div class="antal">'+esc(tal(f.antal))+(f.enhed?" "+esc(flertal(f.enhed,f.antal)):"")+'</div>'+
+        '<div class="navn" data-fret="'+esc(f.id)+'">'+esc(f.navn)+'</div><div class="antal">'+esc(tal(f.antal))+" "+esc(flertal(f.enhed,f.antal))+'</div>'+
         '<button class="rund plus" data-plus="'+esc(f.id)+'" aria-label="Læg én i">+</button></div>').join("");
-      html+= aabenNy===s.id ? '<form class="nyfrys" data-skuffe="'+esc(s.id)+'"><input type="text" class="grow" name="navn" placeholder="Vare" list="forslag" style="flex:1" required><input type="number" name="antal" value="1" min="0" step="any" inputmode="decimal"><button class="btn primary">Læg i</button></form>'
+      html+= aabenNy===s.id ? '<form class="nyfrys" data-skuffe="'+esc(s.id)+'"><input type="text" class="grow" name="navn" placeholder="Vare" list="forslag" required><input type="number" name="antal" value="1" min="0" step="any" inputmode="decimal"><select name="enhed" aria-label="Enhed">'+enhedValg("stk")+'</select><button class="btn primary">Læg i</button></form>'
         : '<div style="margin-top:6px"><button class="btn link" data-nyfrys="'+esc(s.id)+'">+ Læg vare i '+esc(s.navn.toLowerCase())+'</button></div>';
       html+='</div>';
     }
@@ -452,15 +458,16 @@ body.skaerm #skaermTop{display:grid;grid-template-columns:1fr 1fr;gap:12px;margi
     const f=e.target.closest(".nyfrys"); if(!f) return; e.preventDefault();
     const navn=f.navn.value.trim(); const antal=parseFloat(String(f.antal.value).replace(",","."))||1; if(!navn) return;
     const sk=f.dataset.skuffe;
-    const findes=alle("frys").find(x=>x.skuffe===sk&&norm(x.navn)===norm(navn));
+    const enhed=f.enhed.value||"stk";
+    const findes=alle("frys").find(x=>x.skuffe===sk&&norm(x.navn)===norm(navn)&&(x.enhed||"stk")===enhed);
     aabenNy=null; f.remove();
     if(findes){ findes.antal=(findes.antal||0)+antal; findes.lagtInd=Date.now(); put(findes); }
-    else put({id:newId("f"),kind:"frys",navn,antal,enhed:"",skuffe:sk,lagtInd:Date.now()});
+    else put({id:newId("f"),kind:"frys",navn,antal,enhed,skuffe:sk,lagtInd:Date.now()});
     toast(navn+" lagt i fryseren");
   });
   function aendr(id,d){
     const f=get(id); if(!f) return;
-    const ny=Math.round(((f.antal||0)+d)*100)/100;
+    const ny=Math.round(((f.antal||0)+d*trin(f.enhed))*100)/100;
     if(ny<=0){
       const gammel=Object.assign({},f); del(id);
       const paaSeddel=alle("vare").some(v=>!v.taget&&norm(v.navn)===norm(f.navn));
@@ -495,7 +502,7 @@ body.skaerm #skaermTop{display:grid;grid-template-columns:1fr 1fr;gap:12px;margi
   function visFrysFor(vid){
     const v=get(vid); if(!v) return; const fr=frysFor(v.navn);
     aabenArk('<h2>I fryseren</h2><p class="muted">Matcher “'+esc(v.navn)+'”</p><div class="card">'+fr.map(f=>{ const s=get(f.skuffe);
-      return '<div class="fvare"><div class="navn">'+esc(f.navn)+'<div class="muted">'+esc(s?s.navn:"")+'</div></div><div class="antal">'+esc(tal(f.antal))+(f.enhed?" "+esc(f.enhed):"")+'</div></div>'; }).join("")+'</div>'+
+      return '<div class="fvare"><div class="navn">'+esc(f.navn)+'<div class="muted">'+esc(s?s.navn:"")+'</div></div><div class="antal">'+esc(tal(f.antal))+" "+esc(flertal(f.enhed,f.antal))+'</div></div>'; }).join("")+'</div>'+
       '<div class="knapper"><button class="btn danger" id="fjernV">Fjern fra sedlen</button><button class="btn" id="lukA">Luk</button></div>');
     $("lukA").onclick=lukArk; $("fjernV").onclick=()=>{ husk(v.navn); del(v.id); lukArk(); toast(v.navn+" fjernet",()=>put(v)); };
   }
@@ -513,7 +520,7 @@ body.skaerm #skaermTop{display:grid;grid-template-columns:1fr 1fr;gap:12px;margi
     aabenArk('<h2>Fryservare</h2>'+(lagt?'<p class="muted">Sidst lagt i: '+esc(lagt)+'</p>':"")+
       '<label class="felt">Navn<input type="text" id="fNavn" value="'+esc(f.navn)+'"></label>'+
       '<div class="row"><label class="felt grow">Antal<input type="number" id="fAntal" value="'+esc(f.antal)+'" step="any" min="0" inputmode="decimal"></label>'+
-      '<label class="felt grow">Enhed<select id="fEnhed">'+["","stk","pose","pakke","bakke","æske"].map(e=>'<option'+(e===(f.enhed||"")?" selected":"")+' value="'+e+'">'+(e||"–")+'</option>').join("")+'</select></label></div>'+
+      '<label class="felt grow">Enhed<select id="fEnhed">'+enhedValg(f.enhed)+'</select></label></div>'+
       '<label class="felt">Skuffe<select id="fSkuffe">'+opts+'</select></label>'+
       '<div class="knapper"><button class="btn" id="fSeddel">Sæt på sedlen</button></div>'+
       '<div class="knapper"><button class="btn danger" id="fSlet">Slet</button><button class="btn primary" id="fGem">Gem</button></div>');
