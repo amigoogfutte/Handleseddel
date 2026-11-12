@@ -743,7 +743,7 @@ body.skaerm #skaermTop{display:grid;grid-template-columns:1fr 1fr;gap:12px;margi
     const nu=Date.now();
     aabenArk('<h2>Mine tilbud</h2><p class="muted">Personlige tilbud, fx fra Netto+ i Netto-appen. De bliver markeret på sedlen som de andre tilbud og forsvinder, når de udløber.</p>'+
       '<form id="mineForm" class="card" autocomplete="off">'+
-      '<label class="btn primary" style="display:flex;align-items:center;justify-content:center;gap:8px;width:100%">📷 Tag billede af tilbuddet<input type="file" accept="image/*" id="mineFoto" style="display:none"></label>'+
+      '<label class="btn primary" style="display:flex;align-items:center;justify-content:center;gap:8px;width:100%">📷 Tag/vælg billeder af tilbud<input type="file" accept="image/*" multiple id="mineFoto" style="display:none"></label>'+
       '<p class="muted" id="fotoStatus" style="margin:8px 0 0">Tag et billede eller vælg et skærmbillede fra Netto-appen – så udfyldes resten.</p>'+
       '<div id="fotoVis" class="hidden" style="display:flex;gap:10px;align-items:center;margin-top:8px"><img id="fotoImg" style="width:72px;height:72px;object-fit:contain;background:#fff;border-radius:10px;border:1px solid var(--soft)"><button type="button" class="btn small" id="fotoFjern">Fjern billede</button></div>'+
       '<label class="felt">Vare<input type="text" name="navn" placeholder="fx Kaffe" list="mineForslag" required></label>'+
@@ -766,7 +766,7 @@ body.skaerm #skaermTop{display:grid;grid-template-columns:1fr 1fr;gap:12px;margi
     f.til.oninput=()=>{ if(f.til.value) f.dage.value=dageTil(f.til.value); };
     fotoBillede="";
     $("fotoFjern").onclick=()=>{ fotoBillede=""; $("fotoVis").classList.add("hidden"); };
-    $("mineFoto").onchange=async()=>{ const fil=$("mineFoto").files[0]; if(fil) await laesFoto(fil,f); $("mineFoto").value=""; };
+    $("mineFoto").onchange=async()=>{ const filer=[...$("mineFoto").files]; $("mineFoto").value=""; if(filer.length) await laesFotos(filer,f); };
     f.navn.oninput=()=>{ const x=(laering().tilbud||{})[norm(f.navn.value)]; if(!x) return;
       f.butik.value=x.butik||"netto"; f.butikNavn.value=x.butikNavn||""; $("andenFelt").classList.toggle("hidden",f.butik.value!=="anden");
       if(x.pris!=null) f.pris.value=x.pris; f.note.value=x.note||"";
@@ -808,15 +808,28 @@ body.skaerm #skaermTop{display:grid;grid-template-columns:1fr 1fr;gap:12px;margi
     for(let i=0;i<5;i++){ d=tegn(img,x1*W,y1*H,(x2-x1)*W,(y2-y1)*H,maks,kval); if(d.length<38000) break; maks=Math.round(maks*0.8); kval=Math.max(0.45,kval-0.08); }
     return d;
   }
-  async function laesFoto(fil,f){
-    const st=$("fotoStatus"); st.textContent="Læser tilbuddet …";
-    let img; try{ img=await indlaesBillede(fil); }catch(e){ st.textContent="Kunne ikke åbne billedet."; return; }
-    fotoBillede=udsnit(img,null); $("fotoImg").src=fotoBillede; $("fotoVis").classList.remove("hidden");
+  // Flere billeder på én gang: læses ét ad gangen, og alle tilbud oprettes direkte
+  async function laesFotos(filer,f){
+    if(filer.length===1){ await laesFoto(filer[0],f,false); return; }
+    const st=$("fotoStatus"); let nye=0, fandtes=0, fejl=0;
+    for(let i=0;i<filer.length;i++){
+      st.textContent="Læser billede "+(i+1)+" af "+filer.length+" …";
+      const r=await laesFoto(filer[i],f,true);
+      if(!r){ fejl++; continue; } nye+=r.nye; fandtes+=r.fandtes;
+    }
+    fotoBillede=""; visMine();
+    const tekst=nye+" tilbud oprettet fra "+filer.length+" billeder"+(fandtes?", "+fandtes+" fandtes i forvejen":"")+(fejl?", "+fejl+" billede(r) kunne ikke læses":"")+".";
+    $("fotoStatus").textContent=tekst; toast(tekst);
+  }
+  async function laesFoto(fil,f,flere){
+    const st=$("fotoStatus"); if(!flere) st.textContent="Læser tilbuddet …";
+    let img; try{ img=await indlaesBillede(fil); }catch(e){ if(!flere) st.textContent="Kunne ikke åbne billedet."; return null; }
+    if(!flere){ fotoBillede=udsnit(img,null); $("fotoImg").src=fotoBillede; $("fotoVis").classList.remove("hidden"); }
     const stort=tegn(img,0,0,img.naturalWidth,img.naturalHeight,1600,0.85);
     try{
       const j=await api("laes",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({billede:stort})});
       const liste=Array.isArray(j.tilbud)?j.tilbud:(j.tilbud?[j.tilbud]:[]);
-      if(liste.length<=1){
+      if(!flere&&liste.length<=1){
         const t=liste[0]||{};
         if(t.fulde_navn||t.navn) f.navn.value=t.fulde_navn||t.navn; fotoKort=(t.fulde_navn&&t.navn)?t.navn:"";
         if(typeof t.pris==="number") f.pris.value=t.pris;
@@ -845,11 +858,13 @@ body.skaerm #skaermTop{display:grid;grid-template-columns:1fr 1fr;gap:12px;margi
         if(paaSeddel&&!paaSedlen(navn,kort)) tilfoejVare(navn);
         nye++;
       }
+      if(flere) return {nye,fandtes};
       fotoBillede="";
       visMine();
       $("fotoStatus").textContent=nye+" tilbud oprettet"+(fandtes?", "+fandtes+" fandtes i forvejen":"")+(paaSeddel&&nye?" og sat på sedlen":"")+".";
       toast(nye+" tilbud oprettet"+(fandtes?" ("+fandtes+" fandtes allerede)":""));
     }catch(e){
+      if(flere) return null;
       st.textContent=e.login?"Log ind først.":"Kunne ikke læse teksten"+(String(e.message).includes("409")?" – AI er ikke sat op i Home Assistant":"")+". Billedet er gemt – skriv vare og pris selv.";
     }
   }
