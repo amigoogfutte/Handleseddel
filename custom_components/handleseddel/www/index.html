@@ -742,6 +742,7 @@ body.skaerm #skaermTop{display:grid;grid-template-columns:1fr 1fr;gap:12px;margi
       '<div class="row"><label class="felt grow">Slutter om (dage)<input type="number" name="dage" min="0" step="1" inputmode="numeric" value="'+dageTil(naesteSoendag())+'"></label>'+
       '<label class="felt grow">eller gælder til og med<input type="date" name="til" value="'+naesteSoendag()+'"></label></div>'+
       '<label class="felt">Note<input type="text" name="note" placeholder="fx max 2 stk."></label>'+
+      '<label class="toggle" style="border-top:none">Sæt varen på handlesedlen<input type="checkbox" name="paaSeddel"'+(localStorage.getItem("hs_mine_seddel")==="0"?"":" checked")+'></label>'+
       '<div class="knapper"><button class="btn primary">Tilføj tilbud</button></div></form>'+
       (l.length?'<div class="card">'+l.map(m=>{ const udl=m.til&&slutAfDag(m.til).getTime()<nu;
         return '<div class="fvare"'+(udl?' style="opacity:.5"':'')+'><div class="navn"><b>'+esc(m.navn)+'</b><div class="muted">'+esc(butikNavn(m))+(m.pris!=null?" · "+esc(kr(m.pris)):"")+(m.til?" · "+esc(sluttekst(m.til)):"")+(m.note?" · "+esc(m.note):"")+'</div></div>'+
@@ -765,7 +766,10 @@ body.skaerm #skaermTop{display:grid;grid-template-columns:1fr 1fr;gap:12px;margi
       laer("tilbud",navn,{butik:f.butik.value,butikNavn:f.butikNavn.value.trim(),pris:isNaN(pris)?null:pris,note:f.note.value.trim(),dage:f.til.value?dageTil(f.til.value):null});
       put({id:newId("mt"),kind:"mittilbud",navn,butik:f.butik.value,butikNavn:f.butik.value==="anden"?(f.butikNavn.value.trim()||"Anden butik"):"",
         pris:isNaN(pris)?null:pris,til:f.til.value||null,note:f.note.value.trim()});
-      toast(navn+" tilføjet til dine tilbud"); visMine(); };
+      try{ localStorage.setItem("hs_mine_seddel",f.paaSeddel.checked?"1":"0"); }catch(e){}
+      let paa=false;
+      if(f.paaSeddel.checked && !alle("vare").some(v=>!v.taget&&norm(v.navn)===norm(navn))){ tilfoejVare(navn); paa=true; }
+      toast(navn+" tilføjet til dine tilbud"+(paa?" og sat på sedlen":"")); visMine(); };
     document.querySelectorAll("[data-mslet]").forEach(b=>b.onclick=()=>{ const m=get(b.dataset.mslet); del(b.dataset.mslet); visMine(); if(m) toast(m.navn+" slettet",()=>put(m)); });
   }
   $("mineBtn").onclick=visMine;
