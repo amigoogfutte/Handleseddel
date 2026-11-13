@@ -131,6 +131,12 @@ body.skaerm #skaermTop{display:grid;grid-template-columns:1fr 1fr;gap:12px;margi
 #skaermTop form{display:flex;gap:8px}
 #skaermTop .ur{font-size:15px;color:var(--muted);align-self:center;text-align:right}
 @media (max-width:700px){ body.skaerm #skaermTop{grid-template-columns:1fr} }
+body.skaerm .hjul{overflow-y:auto;scroll-snap-type:y mandatory;overscroll-behavior:contain;-webkit-overflow-scrolling:touch;scrollbar-width:none;
+  -webkit-mask-image:linear-gradient(to bottom,transparent 0,#000 28px,#000 calc(100% - 28px),transparent 100%);mask-image:linear-gradient(to bottom,transparent 0,#000 28px,#000 calc(100% - 28px),transparent 100%)}
+body.skaerm .hjul::-webkit-scrollbar{display:none}
+body.skaerm .hjul .fvare{scroll-snap-align:start}
+body.skaerm .hjul.loop .fvare{border-top:1px solid var(--soft)}
+body.skaerm .hjul.loop::after{content:""}
 </style>
 </head>
 <body>
@@ -486,6 +492,27 @@ body.skaerm #skaermTop{display:grid;grid-template-columns:1fr 1fr;gap:12px;margi
   // ---------- fryser ----------
   function skuffer(){ return alle("skuffe").sort((a,b)=>(a.orden||0)-(b.orden||0)); }
   let aabenNy=null;
+  let sidsteFrysHtml="";
+  function hjulHoejde(){
+    document.querySelectorAll(".hjul").forEach(h=>{ const top=h.getBoundingClientRect().top+window.scrollY;
+      h.style.height=Math.max(220,window.innerHeight-top-70)+"px"; });
+  }
+  function opsaetHjul(pos){
+    hjulHoejde();
+    document.querySelectorAll(".hjul").forEach(h=>{
+      const loop=+h.dataset.n>3 && h.scrollHeight/3>h.clientHeight;
+      const saet=h.scrollHeight/3;
+      if(loop){ h.classList.add("loop"); h.scrollTop=saet+(pos&&pos[h.dataset.hjul]!=null?pos[h.dataset.hjul]:0); }
+      h.onscroll=()=>{
+        if(!loop){ h._offset=h.scrollTop; return; }
+        const st=h.scrollHeight/3;
+        if(h.scrollTop<st*0.5) h.scrollTop+=st; else if(h.scrollTop>st*1.5) h.scrollTop-=st;
+        h._offset=h.scrollTop-st;
+      };
+      if(!loop&&pos&&pos[h.dataset.hjul]!=null) h.scrollTop=pos[h.dataset.hjul];
+    });
+  }
+  window.addEventListener("resize",()=>{ if(document.body.classList.contains("skaerm")){ sidsteFrysHtml=""; renderFryser(); } });
   function renderFryser(){
     const q=norm($("frysSoeg").value); const sk=skuffer(); const fr=alle("frys");
     $("importKort").classList.toggle("hidden",!!sk.length||!HA);
@@ -496,9 +523,12 @@ body.skaerm #skaermTop{display:grid;grid-template-columns:1fr 1fr;gap:12px;margi
       if(q&&!items.length) continue;
       items.sort((a,b)=>a.navn.localeCompare(b.navn,"da"));
       html+='<div class="card skuffe"><div class="sekhead"><h2>'+esc(s.navn)+'</h2><span class="muted">'+items.length+(items.length===1?' vare':' varer')+'</span></div>';
-      html+=items.map(f=>'<div class="fvare"><button class="rund" data-minus="'+esc(f.id)+'" aria-label="Tag én ud">−</button>'+
+      const rk=items.map(f=>'<div class="fvare"><button class="rund" data-minus="'+esc(f.id)+'" aria-label="Tag én ud">−</button>'+
         '<div class="navn" data-fret="'+esc(f.id)+'">'+esc(f.navn)+'</div><div class="antal">'+esc(tal(f.antal))+" "+esc(flertal(f.enhed,f.antal))+'</div>'+
         '<button class="rund plus" data-plus="'+esc(f.id)+'" aria-label="Læg én i">+</button></div>').join("");
+      // Fryser-skærm: hver kurv er et hjul, man ruller rundt med en finger (som en enarmet tyveknægt)
+      if(document.body.classList.contains("skaerm")) html+='<div class="hjul" data-hjul="'+esc(s.id)+'" data-n="'+items.length+'">'+rk+(items.length>3?rk+rk:"")+'</div>';
+      else html+=rk;
       html+= aabenNy===s.id ? '<form class="nyfrys" data-skuffe="'+esc(s.id)+'"><input type="text" class="grow" name="navn" placeholder="Vare" list="forslag" required><input type="number" name="antal" value="1" min="0" step="any" inputmode="decimal"><select name="enhed" aria-label="Enhed">'+enhedValg("stk")+'</select><button class="btn primary">Læg i</button></form>'
         : '<div style="margin-top:6px"><button class="btn link" data-nyfrys="'+esc(s.id)+'">+ Læg vare i '+esc(s.navn.toLowerCase())+'</button></div>';
       html+='</div>';
@@ -506,7 +536,10 @@ body.skaerm #skaermTop{display:grid;grid-template-columns:1fr 1fr;gap:12px;margi
     if(q&&!html) html='<div class="tom">Ingen varer matcher “'+esc($("frysSoeg").value)+'”.</div>';
     // Bevar fokus i søgefeltet / ny-vare-formularen
     const fokus=document.activeElement&&document.activeElement.closest&&document.activeElement.closest(".nyfrys");
-    if(!fokus) $("skuffer").innerHTML=html;
+    if(!fokus&&html!==sidsteFrysHtml){
+      const pos={}; document.querySelectorAll(".hjul").forEach(h=>{ pos[h.dataset.hjul]=h._offset!=null?h._offset:null; });
+      $("skuffer").innerHTML=html; sidsteFrysHtml=html; opsaetHjul(pos);
+    }
     renderFjernet();
     const n=fr.filter(f=>(f.antal||0)>0).length; const t=$("talFryser"); t.textContent=n; t.classList.toggle("hidden",!n);
   }
