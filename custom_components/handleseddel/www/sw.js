@@ -1,6 +1,6 @@
 // Gemmer appen på enheden, så den virker uden internet.
-const CACHE = 'handleseddel-v16';
-const FILES = ['./index.html', './manifest.webmanifest', './icon-180.png', './icon-192.png', './icon-512.png'];
+const CACHE = 'handleseddel-v17';
+const FILES = ['./index.html', './manifest.webmanifest', './fryser.webmanifest', './icon-180.png', './icon-192.png', './icon-512.png'];
 const SCOPE = new URL('./', self.location).pathname;
 
 self.addEventListener('install', e => {

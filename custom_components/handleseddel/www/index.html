@@ -8,7 +8,11 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <meta name="apple-mobile-web-app-title" content="Handleseddel">
 <meta name="theme-color" content="#F4F5F2">
-<link rel="manifest" href="manifest.webmanifest">
+<link rel="manifest" id="manifest" href="manifest.webmanifest">
+<script>
+  // Fryser-skærm: brug et manifest der åbner i fuld skærm uden adresselinje, når appen installeres på tabletten
+  try{ if(/[?&]skaerm=fryser/.test(location.search)||(localStorage.getItem("hs_skaerm")==="1"&&!/[?&]skaerm=fra/.test(location.search))) document.getElementById("manifest").href="fryser.webmanifest"; }catch(e){}
+</script>
 <link rel="apple-touch-icon" href="icon-180.png">
 <title>Handleseddel</title>
 <style>
@@ -659,6 +663,11 @@ body.skaerm #skaermTop{display:grid;grid-template-columns:1fr 1fr;gap:12px;margi
     const opdUr=()=>{ const n=alle("vare").filter(v=>!v.taget).length; $("skaermInfo").textContent=n+" "+(n===1?"vare":"varer")+" på sedlen · "+new Date().toLocaleString("da-DK",{weekday:"long",hour:"2-digit",minute:"2-digit"}); };
     setInterval(opdUr,20000); const r0=render; render=function(){ r0(); opdUr(); };
     holdVaagen();
+    // Fuld skærm (ingen adresselinje): ved første tryk og med knappen øverst
+    const fs=()=>{ const d=document.documentElement; const f=d.requestFullscreen||d.webkitRequestFullscreen; if(f&&!(document.fullscreenElement||document.webkitFullscreenElement)) try{ const p=f.call(d); if(p&&p.catch) p.catch(()=>{}); }catch(e){} };
+    document.addEventListener("click",fs,{once:true});
+    const fb=document.createElement("button"); fb.className="iconbtn"; fb.textContent="⛶"; fb.setAttribute("aria-label","Fuld skærm"); fb.style.marginRight="8px"; fb.onclick=fs;
+    const ib=$("indstBtn"), box=document.createElement("div"); box.style.display="flex"; ib.parentNode.insertBefore(box,ib); box.appendChild(fb); box.appendChild(ib);
   }
   $("mangelForm").onsubmit=e=>{ e.preventDefault(); const n=$("mangelInput").value.trim(); if(!n) return; tilfoejVare(n); $("mangelInput").value=""; $("mangelInput").blur(); toast(n+" sat på sedlen"); };
 
