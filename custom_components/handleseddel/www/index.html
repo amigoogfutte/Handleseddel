@@ -710,7 +710,7 @@ body.skaerm .hjul .omgang + .fvare{border-top:none}
   }
 
   // ---------- ark ----------
-  function aabenArk(html){ $("ark").innerHTML='<button class="arkluk" id="arkLuk" aria-label="Luk">✕</button><div class="greb"></div>'+html; $("arkLuk").onclick=lukArk; $("arkLag").classList.remove("hidden"); }
+  function aabenArk(html){ $("ark").innerHTML='<button class="arkluk" id="arkLuk" aria-label="Luk">✕</button><div class="greb"></div>'+html; $("arkLuk").onclick=lukArk; $("ark").scrollTop=0; $("arkLag").classList.remove("hidden"); }
   function lukArk(){ try{ stopScan(); }catch(e){} $("arkLag").classList.add("hidden"); $("ark").innerHTML=""; const a=$("ark"); a.classList.remove("oppe"); a.style.maxHeight=""; a.style.top=""; }
   $("skygge").onclick=lukArk;
   // Når tastaturet kommer frem, flyttes arket op øverst, så det ikke bliver dækket (især på tabletten i fuld skærm)
@@ -719,7 +719,8 @@ body.skaerm .hjul .omgang + .fvare{border-top:none}
     const tilpas=()=>{ if(!ark.classList.contains("oppe")) return; const vv=window.visualViewport;
       const h=vv&&vv.height<window.innerHeight-80?vv.height-12:window.innerHeight*0.48; ark.style.maxHeight=Math.max(180,h)+"px";
       ark.style.top=(vv?vv.offsetTop:0)+"px"; };
-    ark.addEventListener("focusin",e=>{ if(!e.target.matches("input,textarea,select")||e.target.type==="checkbox") return; clearTimeout(t);
+    const touch=!window.matchMedia||matchMedia("(pointer:coarse)").matches; // kun på skærme med tastatur på skærmen
+    ark.addEventListener("focusin",e=>{ if(!touch||!e.target.matches("input,textarea,select")||e.target.type==="checkbox") return; clearTimeout(t);
       if(e.target.tagName==="SELECT") return;
       ark.classList.add("oppe"); tilpas(); setTimeout(()=>{ tilpas(); try{ e.target.scrollIntoView({block:"center"}); }catch(x){} },300); });
     ark.addEventListener("focusout",()=>{ t=setTimeout(()=>{ if(!ark.contains(document.activeElement)||!document.activeElement.matches("input,textarea")){ ark.classList.remove("oppe"); ark.style.maxHeight=""; ark.style.top=""; } },200); });
@@ -1362,7 +1363,7 @@ body.skaerm .hjul .omgang + .fvare{border-top:none}
     skalerGamleBilleder();
   })();
   // ---------- opdatering klar ----------
-  const APPVER="1.0.7";
+  const APPVER="1.0.8";
   $("verTekst").textContent="v"+APPVER;
   let nyVer="";
   async function tjekOpdatering(){
