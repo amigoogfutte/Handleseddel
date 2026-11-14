@@ -589,24 +589,14 @@ body.skaerm .hjul .omgang + .fvare{border-top:none}
     });
   }
   window.addEventListener("resize",()=>{ if(document.body.classList.contains("skaerm")){ sidsteFrysHtml=""; renderFryser(); } });
-  // ---------- billede til varer uden foto: et gratis foto fra dansk Wikipedia, gemt fælles som post "b-<navn>" ----------
-  const WIKI_ALIAS={"is":"Flødeis","isen":"Flødeis","ispinde":"Flødeis","ærter":"Ært","fiskepinde":"Fiskepind","pommes":"Pommes frites","frites":"Pommes frites"};
-  const wikiKoe=[], wikiForsoegt=new Set(); let wikiKoerer=false;
+  // ---------- eget billede pr. vare (tilføjes i varens menu), gemt fælles som post "b-<navn>" ----------
   function billId(navn){ let h=2166136261; for(const c of norm(navn)){ h^=c.codePointAt(0); h=Math.imul(h,16777619)>>>0; } return "b-"+h.toString(36); }
-  function wikiBillede(navn){ const r=get(billId(navn)); return r&&r.url?r.url:""; }
-  function bestilWiki(navn){ const k=norm(navn); if(!k||wikiForsoegt.has(k)||get(billId(navn))) return; wikiForsoegt.add(k); wikiKoe.push(navn); if(!wikiKoerer) koerWiki(); }
-  async function wikiOpslag(titel){
-    try{ const r=await fetch("https://da.wikipedia.org/api/rest_v1/page/summary/"+encodeURIComponent(titel.replace(/ /g,"_")));
-      if(!r.ok) return ""; const j=await r.json(); if(j.type==="disambiguation") return "";
-      return (j.thumbnail&&j.thumbnail.source)||(j.originalimage&&j.originalimage.source)||""; }catch(e){ return ""; } }
-  async function koerWiki(){ wikiKoerer=true;
-    while(wikiKoe.length){ const navn=wikiKoe.shift(); const n=norm(navn); const ord2=ord(navn).filter(w=>w.length>=3).sort((a,b)=>b.length-a.length);
-      const kand=[]; const tilf=t=>{ if(t&&!kand.includes(t)) kand.push(t); };
-      if(WIKI_ALIAS[n]) tilf(WIKI_ALIAS[n]); tilf(navn.trim());
-      ord2.forEach(w=>{ if(WIKI_ALIAS[w]) tilf(WIKI_ALIAS[w]); tilf(w.charAt(0).toUpperCase()+w.slice(1)); const st=w.replace(/(erne|ene|er|e|r)$/,""); if(st.length>=3) tilf(st.charAt(0).toUpperCase()+st.slice(1)); });
-      let url=""; for(const t of kand.slice(0,6)){ url=await wikiOpslag(t); if(url) break; }
-      put({id:billId(navn),kind:"bill",navn,url:url||"",ingen:!url}); }
-    wikiKoerer=false; }
+  function egetBillede(navn){ const r=get(billId(navn)); return r&&r.egen&&r.url?r.url:""; }
+  function laesBilledeFil(fil){ return new Promise((ok,fejl)=>{ const fr=new FileReader(); fr.onerror=fejl; fr.onload=()=>{ const im=new Image(); im.onerror=fejl;
+      im.onload=()=>{ let st=320, q=0.75, url=""; for(let i=0;i<6;i++){ const k=Math.min(1,st/Math.max(im.width,im.height)); const c=document.createElement("canvas");
+          c.width=Math.round(im.width*k); c.height=Math.round(im.height*k); const g=c.getContext("2d"); g.fillStyle="#fff"; g.fillRect(0,0,c.width,c.height); g.drawImage(im,0,0,c.width,c.height);
+          url=c.toDataURL("image/jpeg",q); if(url.length<45000) break; st=Math.round(st*0.8); q=Math.max(0.5,q-0.07); }
+        ok(url); }; im.src=fr.result; }; fr.readAsDataURL(fil); }); }
   function renderFryser(){
     const q=norm($("frysSoeg").value); const sk=skuffer(); const fr=alle("frys");
     $("importKort").classList.toggle("hidden",!!sk.length||!HA);
@@ -618,7 +608,7 @@ body.skaerm .hjul .omgang + .fvare{border-top:none}
       items.sort((a,b)=>a.navn.localeCompare(b.navn,"da"));
       html+='<div class="card skuffe"><div class="sekhead"><h2>'+esc(s.navn)+'</h2><span class="muted">'+items.length+(items.length===1?' vare':' varer')+'</span></div>';
       const kodeBill={}; alle("kode").forEach(k=>{ if(k.billede){ kodeBill[k.id.slice(2)]=k.billede; if(k.navn) kodeBill["n:"+norm(k.navn)]=k.billede; } });
-      const rk=items.map(f=>{ const g=erGammel(f); let bi=(f.kode&&kodeBill[f.kode])||kodeBill["n:"+norm(f.navn)]||""; if(!bi){ bi=wikiBillede(f.navn); if(!bi&&HA) bestilWiki(f.navn); }
+      const rk=items.map(f=>{ const g=erGammel(f); const bi=egetBillede(f.navn)||(f.kode&&kodeBill[f.kode])||kodeBill["n:"+norm(f.navn)]||"";
         return '<div class="fvare'+(g?' gammel':'')+'"><button class="rund" data-minus="'+esc(f.id)+'" aria-label="Tag én ud">−</button>'+
         (bi?'<img class="fbill" data-fbill="1" src="'+esc(bi)+'" alt="" loading="lazy" onerror="this.remove()">':'')+
         '<div class="navn" data-fret="'+esc(f.id)+'">'+esc(f.navn)+(g?'<div class="gtekst">Gammel · bedst før '+esc(datoKort(udloeb(f)))+'</div>':'')+'</div>'+(g?'<button class="udsaet" data-udsaet="'+esc(f.id)+'">Udsæt 1 måned</button>':'')+'<div class="antal">'+esc(tal(f.antal))+" "+esc(flertal(f.enhed,f.antal))+'</div>'+
@@ -747,7 +737,11 @@ body.skaerm .hjul .omgang + .fvare{border-top:none}
     const opts=skuffer().map(s=>'<option value="'+esc(s.id)+'"'+(s.id===f.skuffe?" selected":"")+'>'+esc(s.navn)+'</option>').join("");
     const lagt=f.lagtInd?new Date(f.lagtInd).toLocaleDateString("da-DK",{timeZone:TZ,day:"numeric",month:"short",year:"numeric"}):"";
     const g=erGammel(f);
+    const eget=egetBillede(f.navn);
     aabenArk('<h2>Fryservare</h2>'+(lagt?'<p class="muted">Sidst lagt i: '+esc(lagt)+'</p>':"")+
+      '<div class="row" style="align-items:center;margin:8px 0">'+(eget?'<img src="'+esc(eget)+'" alt="" style="width:64px;height:64px;object-fit:contain;border-radius:10px;background:#fff">':'')+
+      '<label class="btn" style="cursor:pointer;display:inline-flex;align-items:center">📷 '+(eget?'Skift billede':'Tilføj billede')+'<input type="file" id="fBill" accept="image/*" style="display:none"></label>'+
+      (eget?'<button class="btn" id="fBillSlet">Fjern billede</button>':'')+'</div>'+
       '<div class="card'+(g?' gammelkort':'')+'"><div class="row" style="align-items:flex-end"><label class="felt" style="width:130px">Holdbar (måneder)<input type="number" id="fHoldbar" value="'+holdbarMdr(f)+'" min="1" max="60" step="1" inputmode="numeric"></label>'+
       '<div class="grow"><div class="muted">'+(g?'<b>Gammel</b> – ':'')+'Bedst før ca. '+esc(datoKort(udloeb(f)))+'</div></div></div>'+
       '</div>'+
@@ -759,6 +753,9 @@ body.skaerm .hjul .omgang + .fvare{border-top:none}
       '<p class="muted" style="margin:4px 0 0">Kommer der færre i fryseren, sættes '+esc(f.navn)+' automatisk på sedlen.</p>'+
       '<div class="knapper"><button class="btn" id="fSeddel">Sæt på sedlen</button></div>'+
       '<div class="knapper"><button class="btn danger" id="fSlet">Slet</button><button class="btn primary" id="fGem">Gem</button></div>');
+    $("fBill").onchange=async e=>{ const fil=e.target.files&&e.target.files[0]; if(!fil) return;
+      try{ const url=await laesBilledeFil(fil); put({id:billId(f.navn),kind:"bill",navn:f.navn,url,egen:true}); toast("Billede gemt"); retFrys(f.id); }catch(x){ toast("Kunne ikke læse billedet"); } };
+    if($("fBillSlet")) $("fBillSlet").onclick=()=>{ const r=get(billId(f.navn)); if(r){ r.url=""; r.egen=false; put(r); } retFrys(f.id); };
     const gemHoldbar=()=>{ const h=parseInt($("fHoldbar").value,10); if(h>0&&h!==holdbarMdr(f)){ f.holdbar=h; delete f.udloeb; laer("frys",f.navn,{holdbar:h}); } };
     $("fGem").onclick=()=>{ gemHoldbar(); const n=$("fNavn").value.trim(); if(n) f.navn=n; f.antal=parseFloat(String($("fAntal").value).replace(",","."))||0; f.enhed=$("fEnhed").value; f.skuffe=$("fSkuffe").value;
       const mi=Math.max(0,parseFloat(String($("fMin").value).replace(",","."))||0); if(mi!==lagerMin(f.navn)) laer("frys",f.navn,{min:mi});
@@ -1204,7 +1201,7 @@ body.skaerm .hjul .omgang + .fvare{border-top:none}
     document.addEventListener("keydown",e=>{ if(e.key==="Escape") luk(); });
     document.addEventListener("click",e=>{ const im=e.target.closest("[data-fbill]"); if(!im) return; e.stopPropagation(); hov.classList.add("hidden");
 
-      const bi=$("storBillImg"), stort=im.src.replace(/\.(100|200)\.jpg(\?.*)?$/,".400.jpg").replace(/\/(\d+)px-([^/]+)$/,"/800px-$2");
+      const bi=$("storBillImg"), stort=im.src.replace(/\.(100|200)\.jpg(\?.*)?$/,".400.jpg");
       bi.onerror=()=>{ bi.onerror=null; bi.src=im.src; }; bi.src=stort; stor.classList.remove("hidden"); },true);
     if(window.matchMedia&&matchMedia("(hover:hover) and (pointer:fine)").matches){
       document.addEventListener("mouseover",e=>{ const im=e.target.closest&&e.target.closest("[data-fbill]"); if(!im) return;
@@ -1334,7 +1331,7 @@ body.skaerm .hjul .omgang + .fvare{border-top:none}
     await hentMig(); if(ADMIN) rydGamleMine();
   })();
   // ---------- opdatering klar ----------
-  const APPVER="1.0.4";
+  const APPVER="1.0.5";
   $("verTekst").textContent="v"+APPVER;
   let nyVer="";
   async function tjekOpdatering(){
