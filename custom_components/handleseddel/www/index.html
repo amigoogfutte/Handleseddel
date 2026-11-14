@@ -89,6 +89,11 @@ body.skaerm .fvare .udsaet{font-size:17px;padding:8px 18px}
 .gammelkort{background:rgba(229,57,53,.12)}
 .fvare .fbill{width:40px;height:40px;object-fit:contain;border-radius:8px;background:#fff;flex:0 0 auto;cursor:pointer}
 body.skaerm .fvare .fbill{width:56px;height:56px}
+#storBill{position:fixed;inset:0;z-index:50;background:rgba(0,0,0,.75);display:flex;align-items:center;justify-content:center;padding:24px}
+#storBill.hidden,#hoverBill.hidden{display:none}
+#storBill img{width:min(86vw,520px);height:auto;max-height:84vh;object-fit:contain;background:#fff;border-radius:14px;padding:10px}
+#storBill .arkluk{position:absolute;top:16px;right:16px;float:none;margin:0;width:48px;height:48px;font-size:22px}
+#hoverBill{position:fixed;z-index:45;width:260px;height:260px;object-fit:contain;background:#fff;border-radius:12px;padding:8px;box-shadow:0 8px 28px rgba(0,0,0,.3);pointer-events:none}
 .fvare .antal{min-width:58px;text-align:center;font-weight:700;font-size:15px}
 .rund{width:42px;height:42px;border-radius:21px;border:1px solid var(--line);background:#fff;font-size:22px;font-weight:600;cursor:pointer;flex:0 0 auto;display:flex;align-items:center;justify-content:center}
 .rund.plus{background:var(--frost);border-color:#C7DEEA;color:var(--frost-ink)}
@@ -226,6 +231,8 @@ body.skaerm .hjul .omgang + .fvare{border-top:none}
 
 <div id="arkLag" class="hidden"><div class="skygge" id="skygge"></div><div class="ark" id="ark"></div></div>
 <div id="toast" class="hidden"></div>
+<div id="storBill" class="hidden"><img id="storBillImg" alt=""><button id="storBillLuk" class="arkluk" aria-label="Luk">✕</button></div>
+<img id="hoverBill" class="hidden" alt="">
 <button id="opdBanner" class="hidden">🔄 Der ligger en opdatering klar – tryk for at opdatere</button>
 
 <script>
@@ -595,7 +602,7 @@ body.skaerm .hjul .omgang + .fvare{border-top:none}
       const kodeBill={}; alle("kode").forEach(k=>{ if(k.billede){ kodeBill[k.id.slice(2)]=k.billede; if(k.navn) kodeBill["n:"+norm(k.navn)]=k.billede; } });
       const rk=items.map(f=>{ const g=erGammel(f); const bi=(f.kode&&kodeBill[f.kode])||kodeBill["n:"+norm(f.navn)]||"";
         return '<div class="fvare'+(g?' gammel':'')+'"><button class="rund" data-minus="'+esc(f.id)+'" aria-label="Tag én ud">−</button>'+
-        (bi?'<img class="fbill" data-fret="'+esc(f.id)+'" src="'+esc(bi)+'" alt="" loading="lazy" onerror="this.remove()">':'')+
+        (bi?'<img class="fbill" data-fbill="1" src="'+esc(bi)+'" alt="" loading="lazy" onerror="this.remove()">':'')+
         '<div class="navn" data-fret="'+esc(f.id)+'">'+esc(f.navn)+(g?'<div class="gtekst">Gammel · bedst før '+esc(datoKort(udloeb(f)))+'</div>':'')+'</div>'+(g?'<button class="udsaet" data-udsaet="'+esc(f.id)+'">Udsæt 1 måned</button>':'')+'<div class="antal">'+esc(tal(f.antal))+" "+esc(flertal(f.enhed,f.antal))+'</div>'+
         '<button class="rund plus" data-plus="'+esc(f.id)+'" aria-label="Læg én i">+</button></div>'; }).join("");
       // Fryser-skærm: hver kurv er et hjul, man ruller rundt med en finger (som en enarmet tyveknægt)
@@ -1171,6 +1178,23 @@ body.skaerm .hjul .omgang + .fvare{border-top:none}
     }
   }
   $("scanBtn").onclick=visScanner;
+  // ---------- stort billede: tryk på et varebillede (eller hold musen over det på en computer) ----------
+  (function(){
+    const stor=$("storBill"), hov=$("hoverBill");
+    const luk=()=>stor.classList.add("hidden");
+    $("storBillLuk").onclick=luk; stor.addEventListener("click",e=>{ if(e.target===stor) luk(); });
+    document.addEventListener("keydown",e=>{ if(e.key==="Escape") luk(); });
+    document.addEventListener("click",e=>{ const im=e.target.closest("[data-fbill]"); if(!im) return; e.stopPropagation(); hov.classList.add("hidden");
+      const bi=$("storBillImg"), stort=im.src.replace(/\.(100|200)\.jpg(\?.*)?$/,".400.jpg");
+      bi.onerror=()=>{ bi.onerror=null; bi.src=im.src; }; bi.src=stort; stor.classList.remove("hidden"); },true);
+    if(window.matchMedia&&matchMedia("(hover:hover) and (pointer:fine)").matches){
+      document.addEventListener("mouseover",e=>{ const im=e.target.closest&&e.target.closest("[data-fbill]"); if(!im) return;
+        const r=im.getBoundingClientRect(); hov.src=im.src;
+        const x=Math.min(window.innerWidth-272,r.right+12), y=Math.max(8,Math.min(window.innerHeight-272,r.top-110));
+        hov.style.left=x+"px"; hov.style.top=y+"px"; hov.classList.remove("hidden"); });
+      document.addEventListener("mouseout",e=>{ if(e.target.closest&&e.target.closest("[data-fbill]")) hov.classList.add("hidden"); });
+    }
+  })();
 
   // ---------- madforslag: Home Assistants AI foreslår retter ud fra fryserens indhold (gamle varer først) ----------
   let aiEntitet=null;
@@ -1291,7 +1315,7 @@ body.skaerm .hjul .omgang + .fvare{border-top:none}
     await hentMig(); if(ADMIN) rydGamleMine();
   })();
   // ---------- opdatering klar ----------
-  const APPVER="1.0.1";
+  const APPVER="1.0.2";
   $("verTekst").textContent="v"+APPVER;
   let nyVer="";
   async function tjekOpdatering(){
