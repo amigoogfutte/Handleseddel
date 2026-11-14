@@ -23,3 +23,5 @@ Første gang appen åbnes, henter den varerne fra dine Home Assistant-lister: li
 
 Åbn `https://<din-home-assistant>/handle-app/index.html?skaerm=fryser` på tabletten og føj den til hjemmeskærmen.
 Du kan også slå det til under ⚙︎ → **Brug denne enhed som fryser-skærm**. Slå det fra samme sted.
+
+Stregkode-scanning bruger ZXing (Apache License 2.0), se www/zxing.LICENSE. Produktdata fra Open Food Facts (ODbL).

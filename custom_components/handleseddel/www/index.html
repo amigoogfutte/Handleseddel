@@ -138,6 +138,11 @@ body.skaerm .hjul .fvare{scroll-snap-align:start}
 body.skaerm .hjul.loop .fvare{border-top:1px solid var(--soft)}
 body.skaerm .hjul .omgang{height:6px;background:#000;border-radius:3px;margin:6px 0}
 body.skaerm .hjul .omgang + .fvare{border-top:none}
+#scanVideo{width:100%;max-height:52vh;background:#000;border-radius:14px;object-fit:cover}
+.scanramme{position:relative}
+.scanramme::after{content:"";position:absolute;left:12%;right:12%;top:42%;height:16%;border:3px solid rgba(255,255,255,.85);border-radius:10px;pointer-events:none}
+.vareinfo{display:flex;gap:12px;align-items:center}
+.vareinfo img{width:72px;height:72px;object-fit:contain;background:#fff;border-radius:10px;flex:0 0 auto}
 </style>
 </head>
 <body>
@@ -175,7 +180,7 @@ body.skaerm .hjul .omgang + .fvare{border-top:none}
       <form id="mangelForm" autocomplete="off"><input type="text" id="mangelInput" placeholder="Mangler noget? Skriv det på sedlen …" list="forslag" style="flex:1"><button class="btn primary">På sedlen</button></form>
       <div class="ur" id="skaermInfo"></div>
     </div>
-    <div class="add"><input type="search" id="frysSoeg" placeholder="Søg i fryseren …"></div>
+    <div class="add"><div class="row"><input class="grow" type="search" id="frysSoeg" placeholder="Søg i fryseren …"><button class="btn primary" id="scanBtn" aria-label="Scan stregkode">📷 Scan</button></div></div>
     <div id="skuffer"></div>
     <div class="card hidden" id="fjernetKort">
       <div class="sekhead"><h2>Taget ud for nylig</h2><button class="btn small" id="fjernetBtn">Vis</button></div>
@@ -581,7 +586,7 @@ body.skaerm .hjul .omgang + .fvare{border-top:none}
 
   // ---------- ark ----------
   function aabenArk(html){ $("ark").innerHTML='<div class="greb"></div>'+html; $("arkLag").classList.remove("hidden"); }
-  function lukArk(){ $("arkLag").classList.add("hidden"); $("ark").innerHTML=""; }
+  function lukArk(){ try{ stopScan(); }catch(e){} $("arkLag").classList.add("hidden"); $("ark").innerHTML=""; }
   $("skygge").onclick=lukArk;
 
   function visTilbud(vid){
@@ -981,6 +986,121 @@ body.skaerm .hjul .omgang + .fvare{border-top:none}
     const mv=e.target.closest("[data-mvis]"); if(mv){ retMit(mv.dataset.mvis); }
   });
 
+  // ---------- stregkoder: kamera, USB/Bluetooth-scanner og Open Food Facts ----------
+  // Kendte stregkoder gemmes som poster "k-<kode>" (fælles for alle enheder), så en vare kun skal navngives én gang.
+  let scanStream=null, scanStop=false, zxReader=null;
+  function stopScan(){
+    scanStop=true;
+    try{ if(zxReader){ zxReader.reset(); zxReader=null; } }catch(e){}
+    if(scanStream){ scanStream.getTracks().forEach(t=>t.stop()); scanStream=null; }
+  }
+  function hentZxing(){
+    return new Promise((ok,fejl)=>{ if(window.ZXing) return ok(window.ZXing);
+      const sc=document.createElement("script"); sc.src="zxing.min.js"; sc.onload=()=>ok(window.ZXing); sc.onerror=()=>fejl(new Error("zxing")); document.head.appendChild(sc); });
+  }
+  async function visScanner(){
+    aabenArk('<h2>Scan stregkode</h2><div class="scanramme"><video id="scanVideo" playsinline muted autoplay></video></div>'+
+      '<p class="muted" id="scanStatus">Starter kameraet …</p>'+
+      '<form id="kodeForm" class="row" autocomplete="off"><input class="grow" type="text" inputmode="numeric" name="kode" placeholder="… eller skriv stregkoden"><button class="btn">OK</button></form>'+
+      '<div class="knapper"><button class="btn" id="lukA">Luk</button></div>');
+    $("lukA").onclick=()=>{ stopScan(); lukArk(); };
+    $("skygge").onclick=()=>{ stopScan(); lukArk(); };
+    $("kodeForm").onsubmit=e=>{ e.preventDefault(); const k=String(e.target.kode.value||"").replace(/\D/g,""); if(k.length>=6){ stopScan(); visKode(k); } };
+    scanStop=false;
+    const st=$("scanStatus"), video=$("scanVideo");
+    const fundet=k=>{ if(scanStop) return; stopScan(); try{ navigator.vibrate&&navigator.vibrate(80); }catch(e){} visKode(k); };
+    if(!navigator.mediaDevices||!navigator.mediaDevices.getUserMedia){ st.textContent="Kameraet kan ikke bruges her. Skriv stregkoden i stedet."; return; }
+    try{
+      if("BarcodeDetector" in window){
+        const det=new BarcodeDetector({formats:["ean_13","ean_8","upc_a","upc_e","code_128"]});
+        scanStream=await navigator.mediaDevices.getUserMedia({video:{facingMode:"environment"},audio:false});
+        video.srcObject=scanStream; await video.play();
+        st.textContent="Hold stregkoden i rammen.";
+        const loop=async()=>{ if(scanStop) return;
+          try{ const r=await det.detect(video); if(r&&r.length&&r[0].rawValue) return fundet(r[0].rawValue); }catch(e){}
+          setTimeout(loop,180); };
+        loop(); return;
+      }
+      const ZX=await hentZxing();
+      zxReader=new ZX.BrowserMultiFormatReader();
+      st.textContent="Hold stregkoden i rammen.";
+      await zxReader.decodeFromConstraints({video:{facingMode:"environment"},audio:false},video,(res)=>{ if(res&&res.getText) fundet(res.getText()); });
+      scanStream=video.srcObject;
+    }catch(e){
+      st.textContent=(e&&e.name==="NotAllowedError")?"Kameraet er ikke tilladt. Giv appen adgang til kameraet, eller skriv stregkoden.":"Kameraet kunne ikke starte. Skriv stregkoden i stedet.";
+      // Inde i et Home Assistant-dashboard kan rammen blokere kameraet – tilbyd at åbne appen direkte
+      if(inFrame){ const b=document.createElement("button"); b.className="btn primary"; b.style.marginTop="8px"; b.textContent="Åbn scanneren direkte";
+        b.onclick=()=>{ try{ window.top.location.href=location.pathname+"?scan=1"; }catch(x){ location.href=location.pathname+"?scan=1"; } }; st.after(b); }
+    }
+  }
+  $("scanBtn").onclick=visScanner;
+
+  async function slaaOp(kode){
+    try{
+      const r=await fetch("https://world.openfoodfacts.org/api/v2/product/"+encodeURIComponent(kode)+".json?fields=product_name,product_name_da,generic_name_da,brands,quantity,image_front_small_url");
+      if(!r.ok) return null; const j=await r.json(); if(!j||j.status!==1||!j.product) return null;
+      const p=j.product; const navn=(p.product_name_da||p.product_name||p.generic_name_da||"").trim();
+      if(!navn) return null;
+      const maerke=String(p.brands||"").split(",")[0].trim();
+      return {navn:(maerke&&!navn.toLowerCase().includes(maerke.toLowerCase())?maerke+" ":"")+navn+(p.quantity?" "+p.quantity:""), billede:p.image_front_small_url||""};
+    }catch(e){ return null; }
+  }
+  async function visKode(kode){
+    const kendt=get("k-"+kode);
+    let navn=kendt?kendt.navn:"", billede=kendt?(kendt.billede||""):"", kilde=kendt?"kendt":"";
+    const tegn=()=>{
+      const iFryser=alle("frys").filter(f=>(f.antal||0)>0&&(f.kode===kode||(navn&&norm(f.navn)===norm(navn))));
+      const sk=skuffer(); const valgt=(kendt&&kendt.skuffe&&get(kendt.skuffe))?kendt.skuffe:(localStorage.getItem("hs_sidsteSkuffe")||(sk[0]&&sk[0].id)||"");
+      aabenArk('<h2>'+(navn?esc(navn):"Ukendt vare")+'</h2>'+
+        '<div class="vareinfo">'+(billede?'<img src="'+esc(billede)+'" alt="">':'')+'<div class="muted">Stregkode '+esc(kode)+(kilde==="off"?" · fundet i Open Food Facts":kilde==="kendt"?" · kendt vare":kilde==="ingen"?" · ikke fundet – skriv navnet":"")+'</div></div>'+
+        '<label class="felt">Navn<input type="text" id="kNavn" value="'+esc(navn)+'" placeholder="Hvad er det?" list="forslag"></label>'+
+        (iFryser.length?'<div class="card"><h2 style="font-size:16px">I fryseren</h2>'+iFryser.map(f=>{ const s=get(f.skuffe);
+          return '<div class="fvare"><div class="navn">'+esc(f.navn)+'<div class="muted">'+esc(tal(f.antal))+" "+esc(flertal(f.enhed,f.antal))+(s?" · "+esc(s.navn):"")+'</div></div><button class="btn small" data-tagud="'+esc(f.id)+'">Tag én ud</button></div>'; }).join("")+'</div>':'')+
+        '<div class="card"><h2 style="font-size:16px">Læg i fryseren</h2>'+
+        '<div class="row"><label class="felt" style="width:90px">Antal<input type="number" id="kAntal" value="'+((kendt&&kendt.antal)||1)+'" min="0" step="any" inputmode="decimal"></label>'+
+        '<label class="felt grow">Enhed<select id="kEnhed">'+enhedValg((kendt&&kendt.enhed)||"stk")+'</select></label>'+
+        '<label class="felt grow">Kurv<select id="kSkuffe">'+sk.map(x=>'<option value="'+esc(x.id)+'"'+(x.id===valgt?" selected":"")+'>'+esc(x.navn)+'</option>').join("")+'</select></label></div>'+
+        '<div class="knapper"><button class="btn primary" id="kLaegI">Læg i</button></div></div>'+
+        '<div class="knapper"><button class="btn" id="kSeddel">Sæt på sedlen</button><button class="btn" id="kScanIgen">Scan en til</button><button class="btn" id="lukA">Luk</button></div>');
+      $("lukA").onclick=lukArk; $("skygge").onclick=lukArk;
+      const husk=extra=>{ const n=$("kNavn").value.trim(); if(!n) return null; navn=n;
+        const r=Object.assign(get("k-"+kode)||{id:"k-"+kode,kind:"kode"},{navn:n,billede:billede||""},extra||{}); put(r); return n; };
+      $("kLaegI").onclick=()=>{
+        const n=husk(); if(!n){ toast("Skriv hvad varen er"); $("kNavn").focus(); return; }
+        const antal=parseFloat(String($("kAntal").value).replace(",","."))||1, enhed=$("kEnhed").value||"stk", sk2=$("kSkuffe").value;
+        husk({enhed,skuffe:sk2,antal}); try{ localStorage.setItem("hs_sidsteSkuffe",sk2); }catch(e){}
+        laer("frys",n,{enhed,antal,skuffe:sk2});
+        const findes=alle("frys").find(f=>f.skuffe===sk2&&(f.kode===kode||norm(f.navn)===norm(n))&&(f.enhed||"stk")===enhed);
+        if(findes){ findes.antal=(findes.antal||0)+antal; findes.lagtInd=Date.now(); findes.kode=kode; put(findes); }
+        else put({id:newId("f"),kind:"frys",navn:n,antal,enhed,skuffe:sk2,kode,lagtInd:Date.now()});
+        lukArk(); toast(n+" lagt i fryseren");
+      };
+      document.querySelectorAll("[data-tagud]").forEach(b=>b.onclick=()=>{ husk(); const f=get(b.dataset.tagud); if(f&&!f.kode){ f.kode=kode; put(f); } aendr(b.dataset.tagud,-1); lukArk(); });
+      $("kSeddel").onclick=()=>{ const n=husk(); if(!n){ toast("Skriv hvad varen er"); return; } tilfoejVare(n); lukArk(); toast(n+" sat på sedlen"); };
+      $("kScanIgen").onclick=()=>{ husk(); visScanner(); };
+    };
+    if(!kendt){ navn=""; kilde=""; aabenArk('<h2>Slår stregkoden op …</h2><p class="muted">'+esc(kode)+'</p>');
+      const off=await slaaOp(kode); if(off){ navn=off.navn; billede=off.billede; kilde="off"; } else kilde="ingen"; }
+    tegn();
+    if(!navn) setTimeout(()=>{ const i=$("kNavn"); if(i) i.focus(); },100);
+  }
+
+  // USB/Bluetooth-stregkodelæsere virker som et tastatur: mange cifre meget hurtigt efterfulgt af Enter.
+  (function(){
+    let buf="", sidst=0;
+    document.addEventListener("keydown",e=>{
+      const nu=Date.now();
+      if(/^[0-9]$/.test(e.key)){ buf=(nu-sidst<60)?buf+e.key:e.key; sidst=nu; return; }
+      if(e.key==="Enter"&&buf.length>=8&&nu-sidst<100){
+        const kode=buf; buf="";
+        const el=document.activeElement;
+        if(el&&"value" in el&&typeof el.value==="string"&&el.value.endsWith(kode)){ el.value=el.value.slice(0,-kode.length); el.blur(); }
+        e.preventDefault(); e.stopPropagation(); stopScan(); visKode(kode); return;
+      }
+      if(e.key!=="Shift") buf="";
+    },true);
+  })();
+
   // ---------- start ----------
   visFane(fane); render();
   (async()=>{
@@ -989,6 +1109,7 @@ body.skaerm .hjul .omgang + .fvare{border-top:none}
     if(HA && !skuffer().length && localStorage.getItem("hs_importeret")!=="1" && syncState.status==="ok") await importer(false);
     hentTilbud();
     if(HA) hentNavneTilFjernede();
+    if(new URLSearchParams(location.search).get("scan")==="1"){ history.replaceState(null,"",location.pathname); visFane("fryser"); visScanner(); }
     await hentMig(); if(ADMIN) rydGamleMine();
   })();
   if("serviceWorker" in navigator&&(location.protocol==="https:"||location.hostname==="localhost")&&HA){ navigator.serviceWorker.register("sw.js").catch(()=>{}); }
