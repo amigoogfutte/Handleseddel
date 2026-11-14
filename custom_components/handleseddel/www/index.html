@@ -1087,23 +1087,24 @@ body.skaerm .hjul .omgang + .fvare{border-top:none}
         '<label class="felt grow">Enhed<select id="kEnhed">'+enhedValg((kendt&&kendt.enhed)||"stk")+'</select></label>'+
         '<label class="felt grow">Kurv<select id="kSkuffe">'+sk.map(x=>'<option value="'+esc(x.id)+'"'+(x.id===valgt?" selected":"")+'>'+esc(x.navn)+'</option>').join("")+'</select></label></div>'+
         '<div class="knapper"><button class="btn primary" id="kLaegI">Læg i</button></div></div>'+
-        '<div class="knapper"><button class="btn" id="kSeddel">Sæt på sedlen</button><button class="btn" id="kScanIgen">Scan en til</button><button class="btn" id="lukA">Luk</button></div>');
+        '<div class="knapper"><button class="btn" id="kSeddel">Sæt på sedlen</button><button class="btn" id="kScanIgen">Læg i og scan en til</button><button class="btn" id="lukA">Luk</button></div>');
       $("lukA").onclick=lukArk; $("skygge").onclick=lukArk;
       const husk=extra=>{ const n=$("kNavn").value.trim(); if(!n) return null; navn=n;
         const r=Object.assign(get("k-"+kode)||{id:"k-"+kode,kind:"kode"},{navn:n,billede:billede||""},extra||{}); put(r); return n; };
-      $("kLaegI").onclick=()=>{
-        const n=husk(); if(!n){ toast("Skriv hvad varen er"); $("kNavn").focus(); return; }
+      const laegI=()=>{
+        const n=husk(); if(!n){ toast("Skriv hvad varen er"); $("kNavn").focus(); return false; }
         const antal=parseFloat(String($("kAntal").value).replace(",","."))||1, enhed=$("kEnhed").value||"stk", sk2=$("kSkuffe").value;
         husk({enhed,skuffe:sk2,antal}); try{ localStorage.setItem("hs_sidsteSkuffe",sk2); }catch(e){}
         laer("frys",n,{enhed,antal,skuffe:sk2});
         const findes=alle("frys").find(f=>f.skuffe===sk2&&(f.kode===kode||norm(f.navn)===norm(n))&&(f.enhed||"stk")===enhed);
         if(findes){ findes.antal=(findes.antal||0)+antal; findes.lagtInd=Date.now(); findes.kode=kode; put(findes); }
         else put({id:newId("f"),kind:"frys",navn:n,antal,enhed,skuffe:sk2,kode,lagtInd:Date.now()});
-        lukArk(); toast(n+" lagt i fryseren");
+        toast(n+" lagt i fryseren"); return true;
       };
+      $("kLaegI").onclick=()=>{ if(laegI()) lukArk(); };
       document.querySelectorAll("[data-tagud]").forEach(b=>b.onclick=()=>{ husk(); const f=get(b.dataset.tagud); if(f&&!f.kode){ f.kode=kode; put(f); } aendr(b.dataset.tagud,-1); lukArk(); });
       $("kSeddel").onclick=()=>{ const n=husk(); if(!n){ toast("Skriv hvad varen er"); return; } tilfoejVare(n); lukArk(); toast(n+" sat på sedlen"); };
-      $("kScanIgen").onclick=()=>{ husk(); visScanner(); };
+      $("kScanIgen").onclick=()=>{ if(laegI()) visScanner(); };
     };
     if(!kendt){ navn=""; kilde=""; aabenArk('<h2>Slår stregkoden op …</h2><p class="muted">'+esc(kode)+'</p>');
       const off=await slaaOp(kode); if(off){ navn=off.navn; billede=off.billede; kilde="off"; } else kilde="ingen"; }
@@ -1139,7 +1140,7 @@ body.skaerm .hjul .omgang + .fvare{border-top:none}
     await hentMig(); if(ADMIN) rydGamleMine();
   })();
   // ---------- opdatering klar ----------
-  const APPVER="0.8.6";
+  const APPVER="0.8.7";
   async function tjekOpdatering(){
     try{ const r=await fetch("version.json?t="+Date.now(),{cache:"no-store"}); if(!r.ok) return;
       const v=(await r.json()).v; if(v&&v!==APPVER) $("opdBanner").classList.remove("hidden"); }catch(e){}
