@@ -592,11 +592,14 @@ body.skaerm .hjul .omgang + .fvare{border-top:none}
   // ---------- eget billede pr. vare (tilføjes i varens menu), gemt fælles som post "b-<navn>" ----------
   function billId(navn){ let h=2166136261; for(const c of norm(navn)){ h^=c.codePointAt(0); h=Math.imul(h,16777619)>>>0; } return "b-"+h.toString(36); }
   function egetBillede(navn){ const r=get(billId(navn)); return r&&r.egen&&r.url?r.url:""; }
-  function laesBilledeFil(fil){ return new Promise((ok,fejl)=>{ const fr=new FileReader(); fr.onerror=fejl; fr.onload=()=>{ const im=new Image(); im.onerror=fejl;
-      im.onload=()=>{ let st=320, q=0.75, url=""; for(let i=0;i<6;i++){ const k=Math.min(1,st/Math.max(im.width,im.height)); const c=document.createElement("canvas");
+  // Billeder nedskaleres til højst 200 px og ca. 12 KB, så de fylder lidt
+  function skalerBillede(kilde){ return new Promise((ok,fejl)=>{ const im=new Image(); im.onerror=fejl;
+      im.onload=()=>{ let st=200, q=0.6, url=""; for(let i=0;i<6;i++){ const k=Math.min(1,st/Math.max(im.width,im.height)); const c=document.createElement("canvas");
           c.width=Math.round(im.width*k); c.height=Math.round(im.height*k); const g=c.getContext("2d"); g.fillStyle="#fff"; g.fillRect(0,0,c.width,c.height); g.drawImage(im,0,0,c.width,c.height);
-          url=c.toDataURL("image/jpeg",q); if(url.length<45000) break; st=Math.round(st*0.8); q=Math.max(0.5,q-0.07); }
-        ok(url); }; im.src=fr.result; }; fr.readAsDataURL(fil); }); }
+          url=c.toDataURL("image/jpeg",q); if(url.length<12000) break; st=Math.round(st*0.85); q=Math.max(0.4,q-0.06); }
+        ok(url); }; im.src=kilde; }); }
+  function laesBilledeFil(fil){ return new Promise((ok,fejl)=>{ const fr=new FileReader(); fr.onerror=fejl; fr.onload=()=>skalerBillede(fr.result).then(ok,fejl); fr.readAsDataURL(fil); }); }
+  async function skalerGamleBilleder(){ for(const r of alle("bill")){ if(r.egen&&r.url&&r.url.length>15000){ try{ r.url=await skalerBillede(r.url); put(r); }catch(e){} } } }
   function renderFryser(){
     const q=norm($("frysSoeg").value); const sk=skuffer(); const fr=alle("frys");
     $("importKort").classList.toggle("hidden",!!sk.length||!HA);
@@ -1329,9 +1332,10 @@ body.skaerm .hjul .omgang + .fvare{border-top:none}
     if(HA) hentNavneTilFjernede();
     if(new URLSearchParams(location.search).get("scan")==="1"){ history.replaceState(null,"",location.pathname); visFane("fryser"); visScanner(); }
     await hentMig(); if(ADMIN) rydGamleMine();
+    skalerGamleBilleder();
   })();
   // ---------- opdatering klar ----------
-  const APPVER="1.0.5";
+  const APPVER="1.0.6";
   $("verTekst").textContent="v"+APPVER;
   let nyVer="";
   async function tjekOpdatering(){
