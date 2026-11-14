@@ -102,6 +102,7 @@ nav.tabs .tal{display:inline-block;min-width:22px;padding:1px 6px;margin-left:6p
 
 /* Ark nedefra */
 .skygge{position:fixed;inset:0;background:rgba(0,0,0,.3);z-index:20}
+.ark.oppe{top:0;bottom:auto;border-radius:0 0 20px 20px;max-height:48vh;padding-bottom:16px;box-shadow:0 6px 24px rgba(0,0,0,.25)}
 .ark{position:fixed;left:0;right:0;bottom:0;z-index:21;max-height:86vh;overflow:auto;background:var(--bg);border-radius:20px 20px 0 0;padding:16px 16px calc(20px + env(safe-area-inset-bottom));max-width:600px;margin:0 auto}
 .ark .greb{width:40px;height:5px;border-radius:3px;background:var(--line);margin:0 auto 12px}
 .ark h2{font-size:20px;margin-bottom:8px}
@@ -657,8 +658,20 @@ body.skaerm .hjul .omgang + .fvare{border-top:none}
 
   // ---------- ark ----------
   function aabenArk(html){ $("ark").innerHTML='<div class="greb"></div>'+html; $("arkLag").classList.remove("hidden"); }
-  function lukArk(){ try{ stopScan(); }catch(e){} $("arkLag").classList.add("hidden"); $("ark").innerHTML=""; }
+  function lukArk(){ try{ stopScan(); }catch(e){} $("arkLag").classList.add("hidden"); $("ark").innerHTML=""; const a=$("ark"); a.classList.remove("oppe"); a.style.maxHeight=""; a.style.top=""; }
   $("skygge").onclick=lukArk;
+  // Når tastaturet kommer frem, flyttes arket op øverst, så det ikke bliver dækket (især på tabletten i fuld skærm)
+  (function(){
+    const ark=$("ark"); let t=null;
+    const tilpas=()=>{ if(!ark.classList.contains("oppe")) return; const vv=window.visualViewport;
+      const h=vv&&vv.height<window.innerHeight-80?vv.height-12:window.innerHeight*0.48; ark.style.maxHeight=Math.max(180,h)+"px";
+      ark.style.top=(vv?vv.offsetTop:0)+"px"; };
+    ark.addEventListener("focusin",e=>{ if(!e.target.matches("input,textarea,select")||e.target.type==="checkbox") return; clearTimeout(t);
+      if(e.target.tagName==="SELECT") return;
+      ark.classList.add("oppe"); tilpas(); setTimeout(()=>{ tilpas(); try{ e.target.scrollIntoView({block:"center"}); }catch(x){} },300); });
+    ark.addEventListener("focusout",()=>{ t=setTimeout(()=>{ if(!ark.contains(document.activeElement)||!document.activeElement.matches("input,textarea")){ ark.classList.remove("oppe"); ark.style.maxHeight=""; ark.style.top=""; } },200); });
+    if(window.visualViewport) window.visualViewport.addEventListener("resize",tilpas);
+  })();
 
   function visTilbud(vid){
     const v=get(vid); if(!v) return; const tb=tilbudFor(v.navn);
@@ -1229,7 +1242,7 @@ body.skaerm .hjul .omgang + .fvare{border-top:none}
     await hentMig(); if(ADMIN) rydGamleMine();
   })();
   // ---------- opdatering klar ----------
-  const APPVER="0.9.3";
+  const APPVER="0.9.4";
   let nyVer="";
   async function tjekOpdatering(){
     try{ const r=await fetch("version.json?t="+Date.now(),{cache:"no-store"}); if(!r.ok) return;
