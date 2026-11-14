@@ -208,6 +208,14 @@ body.skaerm .hjul .omgang + .fvare{border-top:none}
 <button id="opdBanner" class="hidden">🔄 Der ligger en opdatering klar – tryk for at opdatere</button>
 
 <script>
+  // Går enhedens ur forkert (fx en gammel tablet), bruges Home Assistants ur i stedet.
+  (function(){ const D=Date; let f=0; try{ f=+localStorage.getItem("hs_tid")||0; }catch(e){}
+    class KD extends D{ constructor(...a){ if(a.length) super(...a); else super(D.now()+f); } static now(){ return D.now()+f; } }
+    window.Date=KD;
+    window.saetServerTid=h=>{ const st=D.parse(h||""); if(!st) return; const ny=st-D.now(); const nf=Math.abs(ny)>90000?ny:0;
+      if(Math.abs(nf-f)>30000){ f=nf; try{ localStorage.setItem("hs_tid",String(f)); }catch(e){} } };
+  })();
+
 (function(){
   "use strict";
   const $=id=>document.getElementById(id);
@@ -275,6 +283,7 @@ body.skaerm .hjul .omgang + .fvare{border-top:none}
     const t=await getToken(retried);
     if(!t){ const e=new Error("login"); e.login=true; throw e; }
     const r=await fetch(path.startsWith("/")?path:"/api/handleseddel/"+path,Object.assign({},opts,{headers:Object.assign({},opts.headers||{},{Authorization:"Bearer "+t})}));
+    try{ saetServerTid(r.headers.get("Date")); }catch(e){}
     if(r.status===401&&!retried) return api(path,opts,true);
     if(r.status===401){ authSet(null); const e=new Error("login"); e.login=true; throw e; }
     if(!r.ok){ const e=new Error("server "+r.status); throw e; }
@@ -713,7 +722,7 @@ body.skaerm .hjul .omgang + .fvare{border-top:none}
     document.body.classList.add("skaerm"); fane="fryser";
     document.addEventListener("visibilitychange",holdVaagen); document.addEventListener("click",holdVaagen,{once:true});
     setInterval(()=>{ if(!document.hidden) sync(); },5000);
-    const opdUr=()=>{ const n=alle("vare").filter(v=>!v.taget).length; $("skaermInfo").textContent=n+" "+(n===1?"vare":"varer")+" på sedlen · "+new Date().toLocaleString("da-DK",{weekday:"long",hour:"2-digit",minute:"2-digit"}); };
+    const opdUr=()=>{ const n=alle("vare").filter(v=>!v.taget).length; $("skaermInfo").textContent=n+" "+(n===1?"vare":"varer")+" på sedlen · "+new Date().toLocaleString("da-DK",{weekday:"long",hour:"2-digit",minute:"2-digit",timeZone:"Europe/Copenhagen"}); };
     setInterval(opdUr,20000); const r0=render; render=function(){ r0(); opdUr(); };
     holdVaagen();
     // Fuld skærm (ingen adresselinje): ved første tryk og med knappen øverst
@@ -1129,7 +1138,7 @@ body.skaerm .hjul .omgang + .fvare{border-top:none}
     await hentMig(); if(ADMIN) rydGamleMine();
   })();
   // ---------- opdatering klar ----------
-  const APPVER="0.8.4";
+  const APPVER="0.8.5";
   async function tjekOpdatering(){
     try{ const r=await fetch("version.json?t="+Date.now(),{cache:"no-store"}); if(!r.ok) return;
       const v=(await r.json()).v; if(v&&v!==APPVER) $("opdBanner").classList.remove("hidden"); }catch(e){}
