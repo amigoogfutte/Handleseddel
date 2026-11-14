@@ -212,6 +212,7 @@ body.skaerm .hjul .omgang + .fvare{border-top:none}
   (function(){ const D=Date; let f=0; try{ f=+localStorage.getItem("hs_tid")||0; }catch(e){}
     class KD extends D{ constructor(...a){ if(a.length) super(...a); else super(D.now()+f); } static now(){ return D.now()+f; } }
     window.Date=KD;
+    window.TZ="Europe/Copenhagen";
     window.saetServerTid=h=>{ const st=D.parse(h||""); if(!st) return; const ny=st-D.now(); const nf=Math.abs(ny)>90000?ny:0;
       if(Math.abs(nf-f)>30000){ f=nf; try{ localStorage.setItem("hs_tid",String(f)); }catch(e){} } };
   })();
@@ -296,7 +297,7 @@ body.skaerm .hjul .omgang + .fvare{border-top:none}
   function drawSync(){
     const b=$("syncBar"); if(!HA){ b.classList.add("hidden"); return; }
     const n=db.dirty.length;
-    const t=syncState.last?new Date(syncState.last).toLocaleTimeString("da-DK",{hour:"2-digit",minute:"2-digit"}):"";
+    const t=syncState.last?new Date(syncState.last).toLocaleTimeString("da-DK",{timeZone:TZ,hour:"2-digit",minute:"2-digit"}):"";
     let cls="ok",txt="Delt med alle enheder · "+t;
     if(syncState.status==="busy"){ cls="busy"; txt="Synkroniserer …"; }
     else if(syncState.status==="login"){ cls="login"; txt="Ikke logget ind – tryk her for at logge ind"; }
@@ -406,7 +407,7 @@ body.skaerm .hjul .omgang + .fvare{border-top:none}
     return alle("frys").filter(f=>(f.antal||0)>0&&passer(tokens,f.navn));
   }
   const dato=s=>{ if(!s) return null; const d=new Date(s.replace(/\+0000$/,"Z")); return isNaN(d)?null:d; };
-  const dagNavn=d=>d.toLocaleDateString("da-DK",{weekday:"short",day:"numeric",month:"numeric"});
+  const dagNavn=d=>d.toLocaleDateString("da-DK",{timeZone:TZ,weekday:"short",day:"numeric",month:"numeric"});
   function periode(t){
     const fra=dato(t.fra), til=dato(t.til), nu=new Date();
     if(fra&&fra>nu) return "fra "+dagNavn(fra);
@@ -443,7 +444,7 @@ body.skaerm .hjul .omgang + .fvare{border-top:none}
     $("mineForslag").innerHTML=Object.values(lt).sort((a,b)=>b.t-a.t).map(x=>'<option value="'+esc(x.navn)+'">').join("");
     renderOfte();
     const b=indst().butikker||{}; const valgte=Object.keys(BUTIKKER).filter(k=>b[k]!==false).map(k=>BUTIKKER[k]);
-    $("tilbudInfo").textContent=HA?(tilbudHentet?"Tilbud fra "+valgte.join(", ")+" · hentet "+new Date(tilbudHentet).toLocaleString("da-DK",{weekday:"short",hour:"2-digit",minute:"2-digit"}):"Henter tilbud …"):"";
+    $("tilbudInfo").textContent=HA?(tilbudHentet?"Tilbud fra "+valgte.join(", ")+" · hentet "+new Date(tilbudHentet).toLocaleString("da-DK",{timeZone:TZ,weekday:"short",hour:"2-digit",minute:"2-digit"}):"Henter tilbud …"):"";
   }
   function vareHtml(v){
     let info="";
@@ -636,7 +637,7 @@ body.skaerm .hjul .omgang + .fvare{border-top:none}
   function retFrys(id){
     const f=get(id); if(!f) return;
     const opts=skuffer().map(s=>'<option value="'+esc(s.id)+'"'+(s.id===f.skuffe?" selected":"")+'>'+esc(s.navn)+'</option>').join("");
-    const lagt=f.lagtInd?new Date(f.lagtInd).toLocaleDateString("da-DK",{day:"numeric",month:"short",year:"numeric"}):"";
+    const lagt=f.lagtInd?new Date(f.lagtInd).toLocaleDateString("da-DK",{timeZone:TZ,day:"numeric",month:"short",year:"numeric"}):"";
     aabenArk('<h2>Fryservare</h2>'+(lagt?'<p class="muted">Sidst lagt i: '+esc(lagt)+'</p>':"")+
       '<label class="felt">Navn<input type="text" id="fNavn" value="'+esc(f.navn)+'"></label>'+
       '<div class="row"><label class="felt grow">Antal<input type="number" id="fAntal" value="'+esc(f.antal)+'" step="any" min="0" inputmode="decimal"></label>'+
@@ -722,7 +723,7 @@ body.skaerm .hjul .omgang + .fvare{border-top:none}
     document.body.classList.add("skaerm"); fane="fryser";
     document.addEventListener("visibilitychange",holdVaagen); document.addEventListener("click",holdVaagen,{once:true});
     setInterval(()=>{ if(!document.hidden) sync(); },5000);
-    const opdUr=()=>{ const n=alle("vare").filter(v=>!v.taget).length; $("skaermInfo").textContent=n+" "+(n===1?"vare":"varer")+" på sedlen · "+new Date().toLocaleString("da-DK",{weekday:"long",hour:"2-digit",minute:"2-digit",timeZone:"Europe/Copenhagen"}); };
+    const opdUr=()=>{ const n=alle("vare").filter(v=>!v.taget).length; $("skaermInfo").textContent=n+" "+(n===1?"vare":"varer")+" på sedlen · "+new Date().toLocaleString("da-DK",{timeZone:TZ,weekday:"long",hour:"2-digit",minute:"2-digit"}); };
     setInterval(opdUr,20000); const r0=render; render=function(){ r0(); opdUr(); };
     holdVaagen();
     // Fuld skærm (ingen adresselinje): ved første tryk og med knappen øverst
@@ -746,7 +747,7 @@ body.skaerm .hjul .omgang + .fvare{border-top:none}
     $("fjernetListe").classList.toggle("hidden",!visFjernet);
     if(!visFjernet) return;
     $("fjernetListe").innerHTML=l.map(r=>{ const sk=get(r.skuffe); const d=new Date(r.slettet||r.updated);
-      return '<div class="fvare"><div class="navn">'+esc(r.navn)+'<div class="muted">'+esc(tal(r.antal||1))+" "+esc(flertal(r.enhed,r.antal||1))+(sk?" · "+esc(sk.navn):"")+" · taget ud "+esc(d.toLocaleDateString("da-DK",{weekday:"short",day:"numeric",month:"short"}))+'</div></div>'+
+      return '<div class="fvare"><div class="navn">'+esc(r.navn)+'<div class="muted">'+esc(tal(r.antal||1))+" "+esc(flertal(r.enhed,r.antal||1))+(sk?" · "+esc(sk.navn):"")+" · taget ud "+esc(d.toLocaleDateString("da-DK",{timeZone:TZ,weekday:"short",day:"numeric",month:"short"}))+'</div></div>'+
         '<button class="btn small" data-tilbage="'+esc(r.id)+'">Læg tilbage</button></div>'; }).join("");
   }
   $("fjernetBtn").onclick=()=>{ visFjernet=!visFjernet; renderFjernet(); };
@@ -813,7 +814,7 @@ body.skaerm .hjul .omgang + .fvare{border-top:none}
   function naesteSoendag(){ const d=new Date(); d.setDate(d.getDate()+((7-d.getDay())%7||7)); return isoDag(d); }
   function dageTil(iso){ const t=new Date(iso+"T00:00:00"), n=new Date(); n.setHours(0,0,0,0); return Math.round((t-n)/864e5); }
   function sluttekst(iso){ const n=dageTil(iso); return n<0?"udløbet":n===0?"slutter i dag":n===1?"slutter i morgen":"slutter om "+n+" dage ("+dagTekst(iso)+")"; }
-  function dagTekst(iso){ const d=slutAfDag(iso); return d?d.toLocaleDateString("da-DK",{weekday:"short",day:"numeric",month:"short"}):""; }
+  function dagTekst(iso){ const d=slutAfDag(iso); return d?d.toLocaleDateString("da-DK",{timeZone:TZ,weekday:"short",day:"numeric",month:"short"}):""; }
   function visMine(){
     const l=alle("mittilbud").sort((a,b)=>String(a.til||"").localeCompare(String(b.til||"")));
     const nu=Date.now();
@@ -1138,7 +1139,7 @@ body.skaerm .hjul .omgang + .fvare{border-top:none}
     await hentMig(); if(ADMIN) rydGamleMine();
   })();
   // ---------- opdatering klar ----------
-  const APPVER="0.8.5";
+  const APPVER="0.8.6";
   async function tjekOpdatering(){
     try{ const r=await fetch("version.json?t="+Date.now(),{cache:"no-store"}); if(!r.ok) return;
       const v=(await r.json()).v; if(v&&v!==APPVER) $("opdBanner").classList.remove("hidden"); }catch(e){}
