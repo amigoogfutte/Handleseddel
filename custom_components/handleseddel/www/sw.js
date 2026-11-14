@@ -1,5 +1,5 @@
 // Gemmer appen på enheden, så den virker uden internet.
-const CACHE = 'handleseddel-v24';
+const CACHE = 'handleseddel-v25';
 const FILES = ['./index.html', './manifest.webmanifest', './fryser.webmanifest', './zxing.min.js', './icon-180.png', './icon-192.png', './icon-512.png'];
 const SCOPE = new URL('./', self.location).pathname;
 

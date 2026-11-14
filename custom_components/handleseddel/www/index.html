@@ -654,7 +654,7 @@ body.skaerm .hjul .omgang + .fvare{border-top:none}
       '<div class="row" style="margin-top:10px"><input class="grow" type="text" id="nySkuffe" placeholder="Ny skuffe"><button class="btn small" id="tilfSkuffe">Tilføj</button></div>'+
       (HA?'<button class="btn small" id="genImport" style="margin-top:10px">Hent igen fra Home Assistant-lister</button>':"")+
       '<button class="btn small" id="toemFryser" style="margin-top:10px">Tøm fryseren</button><p class="muted" style="margin:6px 0 0">Fjerner alle varer, men beholder skufferne. Varerne kan lægges tilbage under „Taget ud for nylig“.</p></div>'+
-      '<div class="card"><h2 style="font-size:16px">Fryser-skærm</h2><p class="muted">Viser kun fryseren med store knapper, holder skærmen tændt og opdaterer hvert 5. sekund. Til en tablet ved fryseren.</p>'+
+      '<div class="card"><h2 style="font-size:16px">Fryser-skærm</h2><p class="muted">Viser kun fryseren med store knapper, opdaterer hvert 5. sekund. Skærmen slukker efter tablettens egen timeout. Til en tablet ved fryseren.</p>'+
       '<button class="btn small" id="skaermBtn">'+(SKAERM?"Slå fryser-skærm fra på denne enhed":"Brug denne enhed som fryser-skærm")+'</button></div>'+
       '<div class="knapper"><button class="btn primary" id="lukA">Færdig</button></div>');
     $("toemFryser").onclick=()=>{
@@ -707,7 +707,8 @@ body.skaerm .hjul .omgang + .fvare{border-top:none}
   if(qs.get("skaerm")==="fra"){ try{ localStorage.removeItem("hs_skaerm"); }catch(e){} history.replaceState(null,"",location.pathname); }
   const SKAERM=localStorage.getItem("hs_skaerm")==="1";
   let wakeLock=null;
-  async function holdVaagen(){ try{ if(SKAERM&&"wakeLock" in navigator&&!document.hidden&&!wakeLock){ wakeLock=await navigator.wakeLock.request("screen"); wakeLock.addEventListener("release",()=>{ wakeLock=null; }); } }catch(e){} }
+  // Skærmen må gerne slukke efter tablettens timeout; en bevægelsessensor i Home Assistant vækker den.
+  async function holdVaagen(){ return; try{ if(SKAERM&&"wakeLock" in navigator&&!document.hidden&&!wakeLock){ wakeLock=await navigator.wakeLock.request("screen"); wakeLock.addEventListener("release",()=>{ wakeLock=null; }); } }catch(e){} }
   if(SKAERM){
     document.body.classList.add("skaerm"); fane="fryser";
     document.addEventListener("visibilitychange",holdVaagen); document.addEventListener("click",holdVaagen,{once:true});
@@ -1128,7 +1129,7 @@ body.skaerm .hjul .omgang + .fvare{border-top:none}
     await hentMig(); if(ADMIN) rydGamleMine();
   })();
   // ---------- opdatering klar ----------
-  const APPVER="0.8.3";
+  const APPVER="0.8.4";
   async function tjekOpdatering(){
     try{ const r=await fetch("version.json?t="+Date.now(),{cache:"no-store"}); if(!r.ok) return;
       const v=(await r.json()).v; if(v&&v!==APPVER) $("opdBanner").classList.remove("hidden"); }catch(e){}
