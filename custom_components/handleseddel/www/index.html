@@ -185,6 +185,11 @@ body.skaerm .hjul .omgang + .fvare{border-top:none}
     </div>
     <div class="add"><div class="row"><input class="grow" type="search" id="frysSoeg" placeholder="Søg i fryseren …"><button class="btn primary" id="scanBtn" aria-label="Scan stregkode">📷 Scan</button></div></div>
     <div id="skuffer"></div>
+    <div class="card hidden" id="scannetKort">
+      <h2>Scannet, men ikke lagt i</h2>
+      <p class="muted" style="margin:6px 0 0">Varer, der blev scannet de sidste 2 døgn uden at komme i fryseren.</p>
+      <div id="scannetListe"></div>
+    </div>
     <div class="card hidden" id="fjernetKort">
       <div class="sekhead"><h2>Taget ud for nylig</h2><button class="btn small" id="fjernetBtn">Vis</button></div>
       <p class="muted" style="margin:6px 0 0">Har du taget noget ud ved en fejl, kan du lægge det tilbage her.</p>
@@ -562,7 +567,7 @@ body.skaerm .hjul .omgang + .fvare{border-top:none}
       const pos={}; document.querySelectorAll(".hjul").forEach(h=>{ pos[h.dataset.hjul]=h._offset!=null?h._offset:null; });
       $("skuffer").innerHTML=html; sidsteFrysHtml=html; opsaetHjul(pos);
     }
-    renderFjernet();
+    renderFjernet(); renderScannet();
     const n=fr.filter(f=>(f.antal||0)>0).length; const t=$("talFryser"); t.textContent=n; t.classList.toggle("hidden",!n);
   }
   $("frysSoeg").oninput=renderFryser;
@@ -750,6 +755,19 @@ body.skaerm .hjul .omgang + .fvare{border-top:none}
       return '<div class="fvare"><div class="navn">'+esc(r.navn)+'<div class="muted">'+esc(tal(r.antal||1))+" "+esc(flertal(r.enhed,r.antal||1))+(sk?" · "+esc(sk.navn):"")+" · taget ud "+esc(d.toLocaleDateString("da-DK",{timeZone:TZ,weekday:"short",day:"numeric",month:"short"}))+'</div></div>'+
         '<button class="btn small" data-tilbage="'+esc(r.id)+'">Læg tilbage</button></div>'; }).join("");
   }
+  function scannetIkkeLagtI(){
+    const graense=Date.now()-48*3600*1000, iFryser=new Set(alle("frys").filter(f=>(f.antal||0)>0&&f.kode).map(f=>f.kode));
+    return alle("kode").filter(r=>r.navn&&!r.haandteret&&(r.updated||0)>graense&&!iFryser.has(r.id.slice(2))).sort((a,b)=>(b.updated||0)-(a.updated||0));
+  }
+  function renderScannet(){
+    const l=scannetIkkeLagtI(); $("scannetKort").classList.toggle("hidden",!l.length); if(!l.length) return;
+    $("scannetListe").innerHTML=l.map(r=>'<div class="fvare"><div class="navn">'+esc(r.navn)+'<div class="muted">Stregkode '+esc(r.id.slice(2))+'</div></div>'+
+      '<button class="btn small primary" data-scanlaeg="'+esc(r.id.slice(2))+'">Læg i</button><button class="iconbtn" data-scanvaek="'+esc(r.id)+'" aria-label="Fjern fra listen">✕</button></div>').join("");
+  }
+  document.addEventListener("click",e=>{
+    const a=e.target.closest("[data-scanlaeg]"); if(a){ visKode(a.dataset.scanlaeg); return; }
+    const v=e.target.closest("[data-scanvaek]"); if(v){ const r=get(v.dataset.scanvaek); if(r){ r.haandteret=Date.now(); put(r); } }
+  });
   $("fjernetBtn").onclick=()=>{ visFjernet=!visFjernet; renderFjernet(); };
   document.addEventListener("click",e=>{
     const b=e.target.closest("[data-tilbage]"); if(!b) return;
@@ -1094,7 +1112,7 @@ body.skaerm .hjul .omgang + .fvare{border-top:none}
       const laegI=()=>{
         const n=husk(); if(!n){ toast("Skriv hvad varen er"); $("kNavn").focus(); return false; }
         const antal=parseFloat(String($("kAntal").value).replace(",","."))||1, enhed=$("kEnhed").value||"stk", sk2=$("kSkuffe").value;
-        husk({enhed,skuffe:sk2,antal}); try{ localStorage.setItem("hs_sidsteSkuffe",sk2); }catch(e){}
+        husk({enhed,skuffe:sk2,antal,haandteret:Date.now()}); try{ localStorage.setItem("hs_sidsteSkuffe",sk2); }catch(e){}
         laer("frys",n,{enhed,antal,skuffe:sk2});
         const findes=alle("frys").find(f=>f.skuffe===sk2&&(f.kode===kode||norm(f.navn)===norm(n))&&(f.enhed||"stk")===enhed);
         if(findes){ findes.antal=(findes.antal||0)+antal; findes.lagtInd=Date.now(); findes.kode=kode; put(findes); }
@@ -1102,8 +1120,8 @@ body.skaerm .hjul .omgang + .fvare{border-top:none}
         toast(n+" lagt i fryseren"); return true;
       };
       $("kLaegI").onclick=()=>{ if(laegI()) lukArk(); };
-      document.querySelectorAll("[data-tagud]").forEach(b=>b.onclick=()=>{ husk(); const f=get(b.dataset.tagud); if(f&&!f.kode){ f.kode=kode; put(f); } aendr(b.dataset.tagud,-1); lukArk(); });
-      $("kSeddel").onclick=()=>{ const n=husk(); if(!n){ toast("Skriv hvad varen er"); return; } tilfoejVare(n); lukArk(); toast(n+" sat på sedlen"); };
+      document.querySelectorAll("[data-tagud]").forEach(b=>b.onclick=()=>{ husk({haandteret:Date.now()}); const f=get(b.dataset.tagud); if(f&&!f.kode){ f.kode=kode; put(f); } aendr(b.dataset.tagud,-1); lukArk(); });
+      $("kSeddel").onclick=()=>{ const n=husk({haandteret:Date.now()}); if(!n){ toast("Skriv hvad varen er"); return; } tilfoejVare(n); lukArk(); toast(n+" sat på sedlen"); };
       $("kScanIgen").onclick=()=>{ if(laegI()) visScanner(); };
     };
     if(!kendt){ navn=""; kilde=""; aabenArk('<h2>Slår stregkoden op …</h2><p class="muted">'+esc(kode)+'</p>');
@@ -1140,7 +1158,7 @@ body.skaerm .hjul .omgang + .fvare{border-top:none}
     await hentMig(); if(ADMIN) rydGamleMine();
   })();
   // ---------- opdatering klar ----------
-  const APPVER="0.8.7";
+  const APPVER="0.8.8";
   async function tjekOpdatering(){
     try{ const r=await fetch("version.json?t="+Date.now(),{cache:"no-store"}); if(!r.ok) return;
       const v=(await r.json()).v; if(v&&v!==APPVER) $("opdBanner").classList.remove("hidden"); }catch(e){}
