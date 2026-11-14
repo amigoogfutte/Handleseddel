@@ -76,6 +76,9 @@ input[type=text],input[type=search],input[type=number],input[type=date],select{w
 .fvare{display:flex;align-items:center;gap:10px;padding:8px 0;border-top:1px solid var(--soft)}
 .sekhead + .fvare{border-top:none}
 .fvare .navn{flex:1;min-width:0;overflow-wrap:anywhere;cursor:pointer}
+.fvare.gammel{background:rgba(229,57,53,.16);border-radius:10px;padding-left:8px;padding-right:8px;border-top-color:transparent}
+.fvare .gtekst{font-size:12px;color:#B3261E;font-weight:600}
+.gammelkort{background:rgba(229,57,53,.12)}
 .fvare .antal{min-width:58px;text-align:center;font-weight:700;font-size:15px}
 .rund{width:42px;height:42px;border-radius:21px;border:1px solid var(--line);background:#fff;font-size:22px;font-weight:600;cursor:pointer;flex:0 0 auto;display:flex;align-items:center;justify-content:center}
 .rund.plus{background:var(--frost);border-color:#C7DEEA;color:var(--frost-ink)}
@@ -510,7 +513,7 @@ body.skaerm .hjul .omgang + .fvare{border-top:none}
   document.addEventListener("click",e=>{ const b=e.target.closest("[data-ofte]"); if(!b) return; tilfoejVare(b.dataset.ofte); });
   // Fælles hukommelse for alle enheder: sidste enhed/antal pr. fryservare og sidste værdier pr. eget tilbud.
   function laering(){ return get("laering")||{id:"laering",kind:"laering",frys:{},tilbud:{}}; }
-  function laer(del2,navn,val){ const r=laering(); r[del2]=r[del2]||{}; r[del2][norm(navn)]=Object.assign({},val,{navn,t:Date.now()});
+  function laer(del2,navn,val){ const r=laering(); r[del2]=r[del2]||{}; r[del2][norm(navn)]=Object.assign({},del2==="frys"?(r[del2][norm(navn)]||{}):{},val,{navn,t:Date.now()});
     const keys=Object.keys(r[del2]); if(keys.length>400){ keys.sort((a,b)=>r[del2][a].t-r[del2][b].t).slice(0,keys.length-400).forEach(k=>delete r[del2][k]); }
     put(r); }
 
@@ -550,9 +553,9 @@ body.skaerm .hjul .omgang + .fvare{border-top:none}
       if(q&&!items.length) continue;
       items.sort((a,b)=>a.navn.localeCompare(b.navn,"da"));
       html+='<div class="card skuffe"><div class="sekhead"><h2>'+esc(s.navn)+'</h2><span class="muted">'+items.length+(items.length===1?' vare':' varer')+'</span></div>';
-      const rk=items.map(f=>'<div class="fvare"><button class="rund" data-minus="'+esc(f.id)+'" aria-label="Tag én ud">−</button>'+
-        '<div class="navn" data-fret="'+esc(f.id)+'">'+esc(f.navn)+'</div><div class="antal">'+esc(tal(f.antal))+" "+esc(flertal(f.enhed,f.antal))+'</div>'+
-        '<button class="rund plus" data-plus="'+esc(f.id)+'" aria-label="Læg én i">+</button></div>').join("");
+      const rk=items.map(f=>{ const g=erGammel(f); return '<div class="fvare'+(g?' gammel':'')+'"><button class="rund" data-minus="'+esc(f.id)+'" aria-label="Tag én ud">−</button>'+
+        '<div class="navn" data-fret="'+esc(f.id)+'">'+esc(f.navn)+(g?'<div class="gtekst">Gammel · bedst før '+esc(datoKort(udloeb(f)))+'</div>':'')+'</div><div class="antal">'+esc(tal(f.antal))+" "+esc(flertal(f.enhed,f.antal))+'</div>'+
+        '<button class="rund plus" data-plus="'+esc(f.id)+'" aria-label="Læg én i">+</button></div>'; }).join("");
       // Fryser-skærm: hver kurv er et hjul, man ruller rundt med en finger (som en enarmet tyveknægt)
       if(document.body.classList.contains("skaerm")) html+='<div class="hjul" data-hjul="'+esc(s.id)+'" data-n="'+items.length+'">'+(items.length>3?(rk+OMGANG).repeat(3):rk)+'</div>';
       else html+=rk;
@@ -587,12 +590,19 @@ body.skaerm .hjul .omgang + .fvare{border-top:none}
     laer("frys",navn,{enhed,antal,skuffe:sk});
     const findes=alle("frys").find(x=>x.skuffe===sk&&norm(x.navn)===norm(navn)&&(x.enhed||"stk")===enhed);
     aabenNy=null; f.remove();
-    if(findes){ findes.antal=(findes.antal||0)+antal; findes.lagtInd=Date.now(); put(findes); }
+    if(findes){ findes.antal=(findes.antal||0)+antal; findes.lagtInd=Date.now(); delete findes.udloeb; put(findes); }
     else put({id:newId("f"),kind:"frys",navn,antal,enhed,skuffe:sk,lagtInd:Date.now()});
     toast(navn+" lagt i fryseren");
   });
+  // ---------- holdbarhed: varer markeres røde, når de har ligget for længe (standard 6 måneder) ----------
+  function holdbarMdr(f){ const l=(laering().frys||{})[norm(f.navn)]; return f.holdbar||(l&&l.holdbar)||6; }
+  function addMdr(t,m){ const d=new Date(t); d.setMonth(d.getMonth()+m); return d.getTime(); }
+  function udloeb(f){ return f.udloeb||addMdr(f.lagtInd||f.updated||Date.now(),holdbarMdr(f)); }
+  const erGammel=f=>udloeb(f)<=Date.now();
+  const datoKort=t=>new Date(t).toLocaleDateString("da-DK",{timeZone:TZ,day:"numeric",month:"short",year:"numeric"});
   function aendr(id,d){
     const f=get(id); if(!f) return;
+    if(!f.lagtInd&&f.updated) f.lagtInd=f.updated; // bevar alderen på varer uden dato
     const ny=Math.round(((f.antal||0)+d*trin(f.enhed))*100)/100;
     if(ny<=0){
       const gammel=Object.assign({},f); del(id);
@@ -600,7 +610,7 @@ body.skaerm .hjul .omgang + .fvare{border-top:none}
       toast(f.navn+" er brugt op", paaSeddel?null:()=>{ tilfoejVare(f.navn); toast(f.navn+" sat på sedlen"); }, paaSeddel?null:"Sæt på sedlen", ()=>put(gammel));
       return;
     }
-    f.antal=ny; if(d>0) f.lagtInd=Date.now(); put(f);
+    f.antal=ny; if(d>0){ f.lagtInd=Date.now(); delete f.udloeb; } put(f);
   }
 
   // ---------- ark ----------
@@ -641,16 +651,23 @@ body.skaerm .hjul .omgang + .fvare{border-top:none}
   }
   function retFrys(id){
     const f=get(id); if(!f) return;
+    if(!f.lagtInd&&f.updated) f.lagtInd=f.updated;
     const opts=skuffer().map(s=>'<option value="'+esc(s.id)+'"'+(s.id===f.skuffe?" selected":"")+'>'+esc(s.navn)+'</option>').join("");
     const lagt=f.lagtInd?new Date(f.lagtInd).toLocaleDateString("da-DK",{timeZone:TZ,day:"numeric",month:"short",year:"numeric"}):"";
+    const g=erGammel(f);
     aabenArk('<h2>Fryservare</h2>'+(lagt?'<p class="muted">Sidst lagt i: '+esc(lagt)+'</p>':"")+
+      '<div class="card'+(g?' gammelkort':'')+'"><div class="row" style="align-items:flex-end"><label class="felt" style="width:130px">Holdbar (måneder)<input type="number" id="fHoldbar" value="'+holdbarMdr(f)+'" min="1" max="60" step="1" inputmode="numeric"></label>'+
+      '<div class="grow"><div class="muted">'+(g?'<b>Gammel</b> – ':'')+'Bedst før ca. '+esc(datoKort(udloeb(f)))+'</div></div></div>'+
+      '<div class="knapper"><button class="btn" id="fUdsaet">Udsæt 1 måned</button></div></div>'+
       '<label class="felt">Navn<input type="text" id="fNavn" value="'+esc(f.navn)+'"></label>'+
       '<div class="row"><label class="felt grow">Antal<input type="number" id="fAntal" value="'+esc(f.antal)+'" step="any" min="0" inputmode="decimal"></label>'+
       '<label class="felt grow">Enhed<select id="fEnhed">'+enhedValg(f.enhed)+'</select></label></div>'+
       '<label class="felt">Skuffe<select id="fSkuffe">'+opts+'</select></label>'+
       '<div class="knapper"><button class="btn" id="fSeddel">Sæt på sedlen</button></div>'+
       '<div class="knapper"><button class="btn danger" id="fSlet">Slet</button><button class="btn primary" id="fGem">Gem</button></div>');
-    $("fGem").onclick=()=>{ const n=$("fNavn").value.trim(); if(n) f.navn=n; f.antal=parseFloat(String($("fAntal").value).replace(",","."))||0; f.enhed=$("fEnhed").value; f.skuffe=$("fSkuffe").value;
+    const gemHoldbar=()=>{ const h=parseInt($("fHoldbar").value,10); if(h>0&&h!==holdbarMdr(f)){ f.holdbar=h; delete f.udloeb; laer("frys",f.navn,{holdbar:h}); } };
+    $("fUdsaet").onclick=()=>{ gemHoldbar(); f.udloeb=addMdr(Math.max(udloeb(f),Date.now()),1); put(f); toast(f.navn+" udsat til "+datoKort(f.udloeb)); retFrys(f.id); };
+    $("fGem").onclick=()=>{ gemHoldbar(); const n=$("fNavn").value.trim(); if(n) f.navn=n; f.antal=parseFloat(String($("fAntal").value).replace(",","."))||0; f.enhed=$("fEnhed").value; f.skuffe=$("fSkuffe").value;
       if(f.antal<=0){ del(f.id); } else put(f); lukArk(); };
     $("fSlet").onclick=()=>{ del(f.id); lukArk(); toast(f.navn+" slettet",()=>put(f)); };
     $("fSeddel").onclick=()=>{ tilfoejVare(f.navn); lukArk(); toast(f.navn+" sat på sedlen"); };
@@ -1115,7 +1132,7 @@ body.skaerm .hjul .omgang + .fvare{border-top:none}
         husk({enhed,skuffe:sk2,antal,haandteret:Date.now()}); try{ localStorage.setItem("hs_sidsteSkuffe",sk2); }catch(e){}
         laer("frys",n,{enhed,antal,skuffe:sk2});
         const findes=alle("frys").find(f=>f.skuffe===sk2&&(f.kode===kode||norm(f.navn)===norm(n))&&(f.enhed||"stk")===enhed);
-        if(findes){ findes.antal=(findes.antal||0)+antal; findes.lagtInd=Date.now(); findes.kode=kode; put(findes); }
+        if(findes){ findes.antal=(findes.antal||0)+antal; findes.lagtInd=Date.now(); delete findes.udloeb; findes.kode=kode; put(findes); }
         else put({id:newId("f"),kind:"frys",navn:n,antal,enhed,skuffe:sk2,kode,lagtInd:Date.now()});
         toast(n+" lagt i fryseren"); return true;
       };
@@ -1158,7 +1175,7 @@ body.skaerm .hjul .omgang + .fvare{border-top:none}
     await hentMig(); if(ADMIN) rydGamleMine();
   })();
   // ---------- opdatering klar ----------
-  const APPVER="0.8.9";
+  const APPVER="0.9.0";
   let nyVer="";
   async function tjekOpdatering(){
     try{ const r=await fetch("version.json?t="+Date.now(),{cache:"no-store"}); if(!r.ok) return;
