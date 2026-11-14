@@ -600,17 +600,24 @@ body.skaerm .hjul .omgang + .fvare{border-top:none}
   function udloeb(f){ return f.udloeb||addMdr(f.lagtInd||f.updated||Date.now(),holdbarMdr(f)); }
   const erGammel=f=>udloeb(f)<=Date.now();
   const datoKort=t=>new Date(t).toLocaleDateString("da-DK",{timeZone:TZ,day:"numeric",month:"short",year:"numeric"});
+  // ---------- fast lager: kommer under minimum, sættes varen automatisk på sedlen ----------
+  function lagerMin(navn){ const l=(laering().frys||{})[norm(navn)]; return (l&&l.min)||0; }
+  function iFryserAntal(navn){ return alle("frys").filter(f=>norm(f.navn)===norm(navn)).reduce((a,f)=>a+(f.antal||0),0); }
+  function tjekLager(navn){ const m=lagerMin(navn); if(!m||iFryserAntal(navn)>=m) return false;
+    if(alle("vare").some(v=>!v.taget&&norm(v.navn)===norm(navn))) return false;
+    tilfoejVare(navn); toast(navn+" sat på sedlen – fast lager er "+tal(m)); return true; }
   function aendr(id,d){
     const f=get(id); if(!f) return;
     if(!f.lagtInd&&f.updated) f.lagtInd=f.updated; // bevar alderen på varer uden dato
     const ny=Math.round(((f.antal||0)+d*trin(f.enhed))*100)/100;
     if(ny<=0){
       const gammel=Object.assign({},f); del(id);
+      if(tjekLager(f.navn)) return;
       const paaSeddel=alle("vare").some(v=>!v.taget&&norm(v.navn)===norm(f.navn));
       toast(f.navn+" er brugt op", paaSeddel?null:()=>{ tilfoejVare(f.navn); toast(f.navn+" sat på sedlen"); }, paaSeddel?null:"Sæt på sedlen", ()=>put(gammel));
       return;
     }
-    f.antal=ny; if(d>0){ f.lagtInd=Date.now(); delete f.udloeb; } put(f);
+    f.antal=ny; if(d>0){ f.lagtInd=Date.now(); delete f.udloeb; } put(f); if(d<0) tjekLager(f.navn);
   }
 
   // ---------- ark ----------
@@ -663,13 +670,16 @@ body.skaerm .hjul .omgang + .fvare{border-top:none}
       '<div class="row"><label class="felt grow">Antal<input type="number" id="fAntal" value="'+esc(f.antal)+'" step="any" min="0" inputmode="decimal"></label>'+
       '<label class="felt grow">Enhed<select id="fEnhed">'+enhedValg(f.enhed)+'</select></label></div>'+
       '<label class="felt">Skuffe<select id="fSkuffe">'+opts+'</select></label>'+
+      '<label class="felt">Fast lager – mindst (0 = ingen)<input type="number" id="fMin" value="'+lagerMin(f.navn)+'" min="0" step="any" inputmode="decimal"></label>'+
+      '<p class="muted" style="margin:4px 0 0">Kommer der færre i fryseren, sættes '+esc(f.navn)+' automatisk på sedlen.</p>'+
       '<div class="knapper"><button class="btn" id="fSeddel">Sæt på sedlen</button></div>'+
       '<div class="knapper"><button class="btn danger" id="fSlet">Slet</button><button class="btn primary" id="fGem">Gem</button></div>');
     const gemHoldbar=()=>{ const h=parseInt($("fHoldbar").value,10); if(h>0&&h!==holdbarMdr(f)){ f.holdbar=h; delete f.udloeb; laer("frys",f.navn,{holdbar:h}); } };
     $("fUdsaet").onclick=()=>{ gemHoldbar(); f.udloeb=addMdr(Math.max(udloeb(f),Date.now()),1); put(f); toast(f.navn+" udsat til "+datoKort(f.udloeb)); retFrys(f.id); };
     $("fGem").onclick=()=>{ gemHoldbar(); const n=$("fNavn").value.trim(); if(n) f.navn=n; f.antal=parseFloat(String($("fAntal").value).replace(",","."))||0; f.enhed=$("fEnhed").value; f.skuffe=$("fSkuffe").value;
-      if(f.antal<=0){ del(f.id); } else put(f); lukArk(); };
-    $("fSlet").onclick=()=>{ del(f.id); lukArk(); toast(f.navn+" slettet",()=>put(f)); };
+      const mi=Math.max(0,parseFloat(String($("fMin").value).replace(",","."))||0); if(mi!==lagerMin(f.navn)) laer("frys",f.navn,{min:mi});
+      if(f.antal<=0){ del(f.id); } else put(f); lukArk(); tjekLager(f.navn); };
+    $("fSlet").onclick=()=>{ del(f.id); lukArk(); if(!tjekLager(f.navn)) toast(f.navn+" slettet",()=>put(f)); };
     $("fSeddel").onclick=()=>{ tilfoejVare(f.navn); lukArk(); toast(f.navn+" sat på sedlen"); };
   }
 
@@ -681,6 +691,10 @@ body.skaerm .hjul .omgang + .fvare{border-top:none}
     aabenArk('<h2>Indstillinger</h2>'+
       '<div class="card"><h2 style="font-size:16px">Butikker med tilbud</h2>'+Object.keys(BUTIKKER).map(k=>'<label class="toggle">'+BUTIKKER[k]+'<input type="checkbox" data-butik="'+k+'"'+(b[k]!==false?" checked":"")+'></label>').join("")+
       '<button class="btn small" id="tFrisk" style="margin-top:8px">Hent tilbud igen</button></div>'+
+      '<div class="card"><h2 style="font-size:16px">Fast lager</h2><p class="muted">Varer I altid vil have i fryseren. Kommer der færre end minimum, sættes de automatisk på sedlen.</p>'+
+        Object.values(laering().frys||{}).filter(l=>l.min>0).sort((a,b)=>a.navn.localeCompare(b.navn,"da")).map(l=>{ const n=iFryserAntal(l.navn);
+          return '<div class="fvare'+(n<l.min?' gammel':'')+'"><div class="navn">'+esc(l.navn)+'<div class="muted">I fryseren: '+esc(tal(n))+' · mindst '+esc(tal(l.min))+'</div></div><button class="iconbtn" data-lagerslet="'+esc(l.navn)+'" aria-label="Fjern fast lager">✕</button></div>'; }).join("")+
+        '<div class="row" style="margin-top:10px"><input class="grow" type="text" id="lagerNavn" placeholder="Vare" list="forslag"><input type="number" id="lagerMin" value="1" min="1" step="any" inputmode="decimal" style="width:70px" aria-label="Mindst"><button class="btn small" id="lagerTilf">Tilføj</button></div></div>'+
       '<div class="card"><h2 style="font-size:16px">Skuffer i fryseren</h2>'+sk.map((x,i)=>'<div class="row" style="margin-top:8px"><input class="grow" type="text" data-sknavn="'+esc(x.id)+'" value="'+esc(x.navn)+'">'+
         '<button class="iconbtn" data-skop="'+esc(x.id)+'"'+(i===0?" disabled":"")+' aria-label="Flyt op">↑</button><button class="iconbtn" data-skslet="'+esc(x.id)+'" aria-label="Slet">✕</button></div>').join("")+
       '<div class="row" style="margin-top:10px"><input class="grow" type="text" id="nySkuffe" placeholder="Ny skuffe"><button class="btn small" id="tilfSkuffe">Tilføj</button></div>'+
@@ -695,6 +709,9 @@ body.skaerm .hjul .omgang + .fvare{border-top:none}
       const nu=Date.now(); l.forEach(f=>put(Object.assign({},f,{deleted:true,slettet:nu})));
       lukArk(); toast(l.length+" varer fjernet",()=>l.forEach(f=>{ const ny=Object.assign({},f); delete ny.deleted; delete ny.slettet; put(ny); }));
     };
+    $("lagerTilf").onclick=()=>{ const n=$("lagerNavn").value.trim(), m=parseFloat(String($("lagerMin").value).replace(",","."))||0; if(!n||m<=0) return;
+      laer("frys",n,{min:m}); tjekLager(n); visIndst(); };
+    document.querySelectorAll("[data-lagerslet]").forEach(b=>b.onclick=()=>{ laer("frys",b.dataset.lagerslet,{min:0}); visIndst(); });
     $("skaermBtn").onclick=()=>{ location.href=location.pathname+"?skaerm="+(SKAERM?"fra":"fryser"); };
     $("lukA").onclick=()=>{ document.querySelectorAll("[data-sknavn]").forEach(i=>{ const x=get(i.dataset.sknavn); const n=i.value.trim(); if(x&&n&&n!==x.navn){ x.navn=n; put(x); } }); lukArk(); };
     document.querySelectorAll("[data-butik]").forEach(c=>c.onchange=()=>{ const s=indst(); s.butikker=Object.assign({rema:true,netto:true,brugsen:true},s.butikker||{}); s.butikker[c.dataset.butik]=c.checked; put(s); matchCache.clear(); render(); });
@@ -1175,7 +1192,7 @@ body.skaerm .hjul .omgang + .fvare{border-top:none}
     await hentMig(); if(ADMIN) rydGamleMine();
   })();
   // ---------- opdatering klar ----------
-  const APPVER="0.9.0";
+  const APPVER="0.9.1";
   let nyVer="";
   async function tjekOpdatering(){
     try{ const r=await fetch("version.json?t="+Date.now(),{cache:"no-store"}); if(!r.ok) return;
