@@ -1158,16 +1158,19 @@ body.skaerm .hjul .omgang + .fvare{border-top:none}
     await hentMig(); if(ADMIN) rydGamleMine();
   })();
   // ---------- opdatering klar ----------
-  const APPVER="0.8.8";
+  const APPVER="0.8.9";
+  let nyVer="";
   async function tjekOpdatering(){
     try{ const r=await fetch("version.json?t="+Date.now(),{cache:"no-store"}); if(!r.ok) return;
-      const v=(await r.json()).v; if(v&&v!==APPVER) $("opdBanner").classList.remove("hidden"); }catch(e){}
+      const v=(await r.json()).v; if(v&&v!==APPVER){ nyVer=v; $("opdBanner").classList.remove("hidden"); } }catch(e){}
   }
   $("opdBanner").onclick=async()=>{
     $("opdBanner").textContent="Opdaterer …";
     try{ if(window.caches){ const k=await caches.keys(); await Promise.all(k.map(x=>caches.delete(x))); } }catch(e){}
     try{ if(navigator.serviceWorker){ const regs=await navigator.serviceWorker.getRegistrations(); await Promise.all(regs.map(r=>r.update().catch(()=>{}))); } }catch(e){}
-    location.reload();
+    // Hent den nye side uden om browserens cache (ellers kan den gamle udgave komme igen)
+    try{ await fetch(location.pathname,{cache:"reload"}); }catch(e){}
+    location.replace(location.pathname+"?v="+encodeURIComponent(nyVer||Date.now()));
   };
   setTimeout(tjekOpdatering,5000); setInterval(tjekOpdatering,10*60*1000);
   document.addEventListener("visibilitychange",()=>{ if(!document.hidden) tjekOpdatering(); });

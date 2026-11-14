@@ -1,5 +1,5 @@
 // Gemmer appen på enheden, så den virker uden internet.
-const CACHE = 'handleseddel-v29';
+const CACHE = 'handleseddel-v30';
 const FILES = ['./index.html', './manifest.webmanifest', './fryser.webmanifest', './zxing.min.js', './icon-180.png', './icon-192.png', './icon-512.png'];
 const SCOPE = new URL('./', self.location).pathname;
 
@@ -20,7 +20,7 @@ self.addEventListener('fetch', e => {
   const url = new URL(e.request.url);
   if (e.request.method !== 'GET' || url.origin !== self.location.origin || !url.pathname.startsWith(SCOPE) || url.pathname.endsWith('/version.json')) return;
   const fraCache = () => caches.match(e.request, { ignoreSearch: true }).then(r => r || caches.match('./index.html'));
-  const net = fetch(e.request).then(res => {
+  const net = (e.request.mode === 'navigate' ? fetch(e.request.url, { cache: 'no-cache', credentials: 'same-origin' }) : fetch(e.request, { cache: 'no-cache' })).then(res => {
     if (res.ok) { const copy = res.clone(); caches.open(CACHE).then(c => c.put(e.request, copy)).catch(() => {}); }
     return res;
   });
