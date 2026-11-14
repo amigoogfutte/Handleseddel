@@ -128,6 +128,7 @@ body.skaerm .rund{width:58px;height:58px;border-radius:29px;font-size:28px}
 body.skaerm .skuffe h2{font-size:21px}
 body.skaerm #toast{bottom:calc(24px + env(safe-area-inset-bottom));font-size:18px;padding:16px 18px}
 body.skaerm #toast button{font-size:18px}
+body.skaerm #scanBtn{display:none}
 #skaermTop{display:none}
 body.skaerm #skaermTop{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin:8px 0 14px}
 #skaermTop form{display:flex;gap:8px}
@@ -1127,7 +1128,7 @@ body.skaerm .hjul .omgang + .fvare{border-top:none}
     await hentMig(); if(ADMIN) rydGamleMine();
   })();
   // ---------- opdatering klar ----------
-  const APPVER="0.8.2";
+  const APPVER="0.8.3";
   async function tjekOpdatering(){
     try{ const r=await fetch("version.json?t="+Date.now(),{cache:"no-store"}); if(!r.ok) return;
       const v=(await r.json()).v; if(v&&v!==APPVER) $("opdBanner").classList.remove("hidden"); }catch(e){}
