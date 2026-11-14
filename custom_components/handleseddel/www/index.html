@@ -49,6 +49,9 @@ input[type=text],input[type=search],input[type=number],input[type=date],select{w
 
 /* Seddel */
 .add{position:sticky;top:0;z-index:4;background:var(--bg);padding:8px 0 4px;margin:0}
+.gruppehead{font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:var(--muted,#6b7280);padding:14px 0 2px}
+.gruppehead:first-child{padding-top:2px}
+.gruppehead + .vare{border-top:none}
 .vare{display:flex;gap:12px;align-items:flex-start;padding:12px 0;border-top:1px solid var(--soft)}
 .vare:first-child{border-top:none}
 .tjek{flex:0 0 auto;width:30px;height:30px;border-radius:15px;border:2px solid var(--line);background:#fff;cursor:pointer;margin-top:1px;display:flex;align-items:center;justify-content:center;font-size:17px;color:#fff}
@@ -432,13 +435,39 @@ body.skaerm .hjul .omgang + .fvare{border-top:none}
 
   let render=function(){ drawSync(); renderSeddel(); renderFryser(); };
 
+  // ---------- varegrupper: sedlen sorteres efter butikkens afdelinger ----------
+  const GRUPPER=[
+    ["groent","🥕 Frugt & grønt","frugt grønt grøntsager æble æbler banan bananer pære appelsin appelsiner citron citroner lime mandarin mandariner klementin klementiner vindruer druer jordbær hindbær blåbær brombær melon vandmelon ananas kiwi mango avocado tomat tomater cherrytomater agurk agurker salat icebergsalat hjertesalat peberfrugt peberfrugter løg rødløg forårsløg skalotteløg hvidløg kartoffel kartofler gulerod gulerødder broccoli blomkål kål spidskål rødkål hvidkål grønkål rosenkål porre porrer selleri bladselleri squash aubergine champignon champignoner svampe ærter sukkerærter majs bønner spinat rucola persille dild basilikum purløg koriander ingefær chili radiser rødbede rødbeder pastinak græskar"],
+    ["broed","🍞 Brød & bager","brød rugbrød franskbrød toastbrød fuldkornsbrød boller bolle rundstykker rundstykke baguette baguettes flutes pita pitabrød tortilla tortillas wraps knækbrød wienerbrød croissant croissanter kage kringle"],
+    ["koed","🥩 Kød & fisk","kød hakket hakkekød oksekød svinekød lammekød kylling kyllingebryst kyllingelår kalkun bacon pølse pølser hotdogpølser medister medisterpølse frikadeller koteletter mørbrad svinemørbrad steg flæsk flæskesteg nakkefilet laks torsk fisk fiskefrikadeller rejer tun sild makrel culottesteg entrecote bøf bøffer"],
+    ["paalaeg","🥓 Pålæg","pålæg spegepølse rullepølse leverpostej postej hamburgerryg salami skinke kyllingepålæg pålægschokolade"],
+    ["mejeri","🥛 Mejeri & æg","mælk minimælk letmælk sødmælk skummetmælk kærnemælk cacaomælk kakaomælk yoghurt skyr ymer smør smørbar bregott kærgården ost osten skiveost revet flødeost rygeost hytteost mozzarella feta parmesan cheddar fløde piskefløde madlavningsfløde fraiche cremefraiche æg æggene margarine kvark"],
+    ["frost","🧊 Frost","frost frosne frossen frosset frysepizza is isen ispinde isvafler pommes frites"],
+    ["kolonial","🥫 Kolonial","mel hvedemel rugmel sukker flormel flormelis salt peber krydderi krydderier pasta spaghetti makaroni lasagneplader nudler ris havregryn müsli mysli cornflakes morgenmad olie olivenolie rapsolie eddike ketchup sennep mayonnaise remoulade dressing bouillon terninger konserves dåse dåsetomater tomatpure flåede kokosmælk honning marmelade syltetøj nutella gær bagepulver rosiner tacokrydderi tacoskaller tacos sovs saucer sauce kapers oliven"],
+    ["snacks","🍫 Snacks & slik","chips slik chokolade kiks småkager popcorn nødder peanuts mandler lakrids vingummi"],
+    ["drikke","🥤 Drikkevarer","kaffe te juice appelsinjuice saft sodavand cola vand danskvand kildevand øl vin rødvin hvidvin energidrik"],
+    ["rengoering","🧽 Rengøring & husholdning","opvask opvaskemiddel opvasketabs tabs vaskemiddel skyllemiddel rengøring rengøringsmiddel karklud klude svampe grydesvampe affaldsposer skraldeposer fryseposer køkkenrulle køkkenruller toiletpapir sølvpapir husholdningsfilm bagepapir stearinlys fyrfadslys batterier wc kalkfjerner afkalker klorin kattegrus kattemad hundemad"],
+    ["pleje","🧴 Personlig pleje","shampoo balsam tandpasta tandbørste tandbørster deodorant deo håndsæbe sæbe bodylotion barberblade bind tamponer vatpinde plaster bleer vådservietter"],
+    ["andet","📦 Andet",""]
+  ].map(([id,navn,ord])=>({id,navn,ord:ord.split(" ").filter(Boolean)}));
+  function gruppeFor(navn){
+    const l=(laering().gruppe||{})[norm(navn)]; if(l&&l.g&&GRUPPER.some(g=>g.id===l.g)) return l.g;
+    let bedst="andet", len=0;
+    for(const w of norm(navn).split(" ")) for(const g of GRUPPER) for(const k of g.ord){
+      if(k.length>len&&(k.length<=3?w===k:w.includes(k))){ bedst=g.id; len=k.length; } }
+    return bedst;
+  }
+  const grIdx=id=>GRUPPER.findIndex(g=>g.id===id);
   function renderSeddel(){
     matchCache.clear();
     { const n=mineTilbud().length; $("mineBtn").textContent="★ Mine tilbud"+(n?" ("+n+")":""); }
     const varer=alle("vare");
     const mangler=varer.filter(v=>!v.taget).sort((a,b)=>(a.oprettet||0)-(b.oprettet||0));
     const taget=varer.filter(v=>v.taget).sort((a,b)=>(b.tagetTid||0)-(a.tagetTid||0));
-    $("seddelListe").innerHTML=mangler.length?mangler.map(vareHtml).join(""):'<div class="tom">Sedlen er tom. Skriv en vare ovenfor.</div>';
+    let html="", sidst=null;
+    mangler.map(v=>({v,g:gruppeFor(v.navn)})).sort((a,b)=>grIdx(a.g)-grIdx(b.g)).forEach(({v,g})=>{
+      if(g!==sidst){ html+='<div class="gruppehead">'+esc(GRUPPER[grIdx(g)].navn)+'</div>'; sidst=g; } html+=vareHtml(v); });
+    $("seddelListe").innerHTML=mangler.length?html:'<div class="tom">Sedlen er tom. Skriv en vare ovenfor.</div>';
     $("kurvKort").classList.toggle("hidden",!taget.length);
     $("kurvTitel").textContent="I kurven ("+taget.length+")";
     $("kurvListe").innerHTML=taget.map(vareHtml).join("");
@@ -651,9 +680,12 @@ body.skaerm .hjul .omgang + .fvare{border-top:none}
   }
   function retVare(id){
     const v=get(id); if(!v) return;
+    const g0=gruppeFor(v.navn);
     aabenArk('<h2>Vare</h2><label class="felt">Navn<input type="text" id="rNavn" value="'+esc(v.navn)+'"></label>'+
+      '<label class="felt">Varegruppe<select id="rGruppe">'+GRUPPER.map(g=>'<option value="'+g.id+'"'+(g.id===g0?" selected":"")+'>'+esc(g.navn)+'</option>').join("")+'</select></label>'+
       '<div class="knapper"><button class="btn danger" id="rSlet">Slet</button><button class="btn primary" id="rGem">Gem</button></div>');
-    $("rGem").onclick=()=>{ const n=$("rNavn").value.trim(); if(n){ v.navn=n; put(v); } lukArk(); };
+    $("rGem").onclick=()=>{ const n=$("rNavn").value.trim(); if(n&&n!==v.navn){ v.navn=n; put(v); }
+      const g=$("rGruppe").value; if(g!==gruppeFor(v.navn)) laer("gruppe",v.navn,{g}); else render(); lukArk(); };
     $("rSlet").onclick=()=>{ husk(v.navn); del(id); lukArk(); toast(v.navn+" slettet",()=>put(v)); };
   }
   function retFrys(id){
@@ -844,7 +876,7 @@ body.skaerm .hjul .omgang + .fvare{border-top:none}
 
   // ---------- kopiér handleseddel ----------
   $("kopierBtn").onclick=async()=>{
-    const l=alle("vare").filter(v=>!v.taget).sort((a,b)=>(a.oprettet||0)-(b.oprettet||0));
+    const l=alle("vare").filter(v=>!v.taget).sort((a,b)=>grIdx(gruppeFor(a.navn))-grIdx(gruppeFor(b.navn))||(a.oprettet||0)-(b.oprettet||0));
     if(!l.length){ toast("Sedlen er tom"); return; }
     const linjer=l.map(v=>"- "+v.navn);
     const tekst="Handleseddel\n"+linjer.join("\n");
@@ -1192,7 +1224,7 @@ body.skaerm .hjul .omgang + .fvare{border-top:none}
     await hentMig(); if(ADMIN) rydGamleMine();
   })();
   // ---------- opdatering klar ----------
-  const APPVER="0.9.1";
+  const APPVER="0.9.2";
   let nyVer="";
   async function tjekOpdatering(){
     try{ const r=await fetch("version.json?t="+Date.now(),{cache:"no-store"}); if(!r.ok) return;
