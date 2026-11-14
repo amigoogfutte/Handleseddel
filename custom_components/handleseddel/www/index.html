@@ -1009,7 +1009,11 @@ body.skaerm .hjul .omgang + .fvare{border-top:none}
     scanStop=false;
     const st=$("scanStatus"), video=$("scanVideo");
     const fundet=k=>{ if(scanStop) return; stopScan(); try{ navigator.vibrate&&navigator.vibrate(80); }catch(e){} visKode(k); };
-    if(!navigator.mediaDevices||!navigator.mediaDevices.getUserMedia){ st.textContent="Kameraet kan ikke bruges her. Skriv stregkoden i stedet."; return; }
+    if(!navigator.mediaDevices||!navigator.mediaDevices.getUserMedia){
+      st.textContent=(window.isSecureContext===false||location.protocol==="http:")
+        ?"Kameraet virker kun, når Home Assistant åbnes med https (fx Nabu Casa-adressen) – ikke med http://192.168…. Skriv stregkoden, eller brug en stregkodelæser."
+        :"Kameraet kan ikke bruges her. Skriv stregkoden i stedet.";
+      return; }
     try{
       if("BarcodeDetector" in window){
         const det=new BarcodeDetector({formats:["ean_13","ean_8","upc_a","upc_e","code_128"]});
