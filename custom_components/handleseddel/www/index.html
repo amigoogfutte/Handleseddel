@@ -195,7 +195,7 @@ body.skaerm .hjul .omgang + .fvare{border-top:none}
       <form id="mangelForm" autocomplete="off"><input type="text" id="mangelInput" placeholder="Mangler noget? Skriv det på sedlen …" list="forslag" style="flex:1"><button class="btn primary">På sedlen</button></form>
       <div class="ur" id="skaermInfo"></div>
     </div>
-    <div class="add"><div class="row"><input class="grow" type="search" id="frysSoeg" placeholder="Søg i fryseren …"><button class="btn primary" id="scanBtn" aria-label="Scan stregkode">📷 Scan</button></div></div>
+    <div class="add"><div class="row"><input class="grow" type="search" id="frysSoeg" placeholder="Søg i fryseren …"><button class="btn" id="madBtn" aria-label="Madforslag">🍽 Mad</button><button class="btn primary" id="scanBtn" aria-label="Scan stregkode">📷 Scan</button></div></div>
     <div id="skuffer"></div>
     <div class="card hidden" id="scannetKort">
       <h2>Scannet, men ikke lagt i</h2>
@@ -1165,6 +1165,46 @@ body.skaerm .hjul .omgang + .fvare{border-top:none}
   }
   $("scanBtn").onclick=visScanner;
 
+  // ---------- madforslag: Home Assistants AI foreslår retter ud fra fryserens indhold (gamle varer først) ----------
+  let aiEntitet=null;
+  async function findAi(){ if(aiEntitet) return aiEntitet;
+    const st=await api("/api/states"); const l=(st||[]).map(x=>x.entity_id).filter(e=>/^ai_task\./.test(e)); aiEntitet=l[0]||null; return aiEntitet; }
+  function laesListe(svar){ let d=svar; if(d&&typeof d==="object"&&!Array.isArray(d)) d=d.data!==undefined?d.data:d;
+    if(typeof d==="string"){ const a=d.indexOf("["), b=d.lastIndexOf("]"); if(a<0||b<a) return []; try{ d=JSON.parse(d.slice(a,b+1)); }catch(e){ return []; } }
+    if(d&&!Array.isArray(d)&&Array.isArray(d.retter)) d=d.retter; return Array.isArray(d)?d:[]; }
+  async function visMad(){
+    aabenArk('<h2>🍽 Hvad skal vi have?</h2><p class="muted" id="madStatus">Kigger i fryseren og finder på retter …</p><div id="madListe"></div>'+
+      '<div class="knapper"><button class="btn" id="madIgen">Nye forslag</button><button class="btn" id="lukA">Luk</button></div>');
+    $("lukA").onclick=lukArk; $("madIgen").onclick=visMad;
+    try{
+      const ent=await findAi(); if(!ent){ $("madStatus").textContent="Home Assistant har ingen AI-tjeneste sat op."; return; }
+      const fr=alle("frys").filter(f=>(f.antal||0)>0).sort((a,b)=>(erGammel(b)?1:0)-(erGammel(a)?1:0));
+      if(!fr.length){ $("madStatus").textContent="Fryseren er tom – læg nogle varer i først."; return; }
+      const linjer=fr.map(f=>"- "+f.navn+" ("+tal(f.antal)+" "+flertal(f.enhed,f.antal)+(erGammel(f)?", GAMMEL – skal bruges snart":"")+")").join("\n");
+      const seddel=alle("vare").filter(v=>!v.taget).map(v=>v.navn).join(", ")||"intet";
+      const instr="Du er en hjælpsom dansk kok. Foreslå 3 forskellige aftensmadsretter til en dansk familie ud fra det, der ligger i fryseren. "+
+        "Brug helst varer markeret GAMMEL. Hold det hverdagsagtigt og realistisk.\n\nI fryseren:\n"+linjer+"\n\nStår allerede på handlesedlen: "+seddel+
+        "\n\nSvar KUN med en JSON-liste uden anden tekst, fx:\n"+
+        '[{"navn":"Ret","beskrivelse":"1-2 korte sætninger om hvordan","tid":"30 min","fra_fryser":["varer fra fryseren"],"mangler":["ingredienser der skal købes"]}]'+
+        "\nI mangler: kun ting der skal købes – ikke salt, peber, olie, mel, sukker eller ting fra fryseren. Skriv alt på dansk.";
+      const r=await api("/api/services/ai_task/generate_data?return_response",{method:"POST",headers:{"Content-Type":"application/json"},
+        body:JSON.stringify({task_name:"Madforslag",instructions:instr,entity_id:ent})});
+      const retter=laesListe(r&&r.service_response).filter(x=>x&&x.navn).slice(0,5);
+      if(!$("madListe")) return;
+      if(!retter.length){ $("madStatus").textContent="Fik ingen forslag. Prøv igen."; return; }
+      $("madStatus").textContent="Tryk „Sæt på sedlen“ for at få det, der mangler, med.";
+      $("madListe").innerHTML=retter.map((x,i)=>{ const fra=(x.fra_fryser||[]).join(", "), m=(x.mangler||[]).filter(Boolean);
+        return '<div class="card"><div class="sekhead"><h2 style="font-size:17px">'+esc(x.navn)+'</h2>'+(x.tid?'<span class="muted">'+esc(x.tid)+'</span>':'')+'</div>'+
+          (x.beskrivelse?'<p style="margin:6px 0">'+esc(x.beskrivelse)+'</p>':'')+
+          (fra?'<p class="muted" style="margin:4px 0">❄︎ Fra fryseren: '+esc(fra)+'</p>':'')+
+          (m.length?'<p class="muted" style="margin:4px 0">🛒 Skal købes: '+esc(m.join(", "))+'</p><div class="knapper"><button class="btn primary" data-madseddel="'+i+'">Sæt på sedlen</button></div>':'<p class="muted" style="margin:4px 0">Alt er hjemme.</p>')+'</div>'; }).join("");
+      document.querySelectorAll("[data-madseddel]").forEach(b=>b.onclick=()=>{ const m=(retter[+b.dataset.madseddel].mangler||[]).filter(Boolean);
+        let n=0; m.forEach(v=>{ if(!alle("vare").some(x=>!x.taget&&norm(x.navn)===norm(v))){ tilfoejVare(v); n++; } });
+        b.textContent="✓ "+n+" sat på sedlen"; b.disabled=true; });
+    }catch(e){ if($("madStatus")) $("madStatus").textContent=e&&e.login?"Log ind først.":"Kunne ikke hente forslag lige nu. Prøv igen om lidt."; }
+  }
+  $("madBtn").onclick=visMad;
+
   async function slaaOp(kode){
     try{
       const r=await fetch("https://world.openfoodfacts.org/api/v2/product/"+encodeURIComponent(kode)+".json?fields=product_name,product_name_da,generic_name_da,brands,quantity,image_front_small_url");
@@ -1244,7 +1284,7 @@ body.skaerm .hjul .omgang + .fvare{border-top:none}
     await hentMig(); if(ADMIN) rydGamleMine();
   })();
   // ---------- opdatering klar ----------
-  const APPVER="0.9.5";
+  const APPVER="0.9.6";
   $("verTekst").textContent="v"+APPVER;
   let nyVer="";
   async function tjekOpdatering(){
