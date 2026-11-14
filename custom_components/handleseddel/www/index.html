@@ -111,6 +111,8 @@ nav.tabs .tal{display:inline-block;min-width:22px;padding:1px 6px;margin-left:6p
 .toggle input{width:24px;height:24px}
 #toast{position:fixed;left:50%;transform:translateX(-50%);width:max-content;bottom:calc(84px + env(safe-area-inset-bottom));z-index:30;background:var(--ink);color:#fff;border-radius:14px;padding:12px 14px;font-size:15px;display:flex;gap:12px;align-items:center;max-width:92vw;box-shadow:0 4px 16px rgba(0,0,0,.2)}
 #toast span{flex:1;min-width:0}
+#opdBanner{position:fixed;left:50%;transform:translateX(-50%);top:calc(10px + env(safe-area-inset-top));z-index:40;background:#1F7A3A;color:#fff;border:none;border-radius:14px;padding:14px 18px;font-size:16px;font-weight:700;box-shadow:0 4px 16px rgba(0,0,0,.25);cursor:pointer;max-width:92vw}
+body.skaerm #opdBanner{font-size:20px;padding:18px 24px}
 #toast button{white-space:nowrap;flex:0 0 auto;background:none;border:none;color:#9FD0F0;font-weight:700;font-size:15px;cursor:pointer;padding:4px}
 
 /* Fryser-skærm: tablet ved fryseren */
@@ -202,6 +204,7 @@ body.skaerm .hjul .omgang + .fvare{border-top:none}
 
 <div id="arkLag" class="hidden"><div class="skygge" id="skygge"></div><div class="ark" id="ark"></div></div>
 <div id="toast" class="hidden"></div>
+<button id="opdBanner" class="hidden">🔄 Der ligger en opdatering klar – tryk for at opdatere</button>
 
 <script>
 (function(){
@@ -1123,6 +1126,20 @@ body.skaerm .hjul .omgang + .fvare{border-top:none}
     if(new URLSearchParams(location.search).get("scan")==="1"){ history.replaceState(null,"",location.pathname); visFane("fryser"); visScanner(); }
     await hentMig(); if(ADMIN) rydGamleMine();
   })();
+  // ---------- opdatering klar ----------
+  const APPVER="0.8.2";
+  async function tjekOpdatering(){
+    try{ const r=await fetch("version.json?t="+Date.now(),{cache:"no-store"}); if(!r.ok) return;
+      const v=(await r.json()).v; if(v&&v!==APPVER) $("opdBanner").classList.remove("hidden"); }catch(e){}
+  }
+  $("opdBanner").onclick=async()=>{
+    $("opdBanner").textContent="Opdaterer …";
+    try{ if(window.caches){ const k=await caches.keys(); await Promise.all(k.map(x=>caches.delete(x))); } }catch(e){}
+    try{ if(navigator.serviceWorker){ const regs=await navigator.serviceWorker.getRegistrations(); await Promise.all(regs.map(r=>r.update().catch(()=>{}))); } }catch(e){}
+    location.reload();
+  };
+  setTimeout(tjekOpdatering,5000); setInterval(tjekOpdatering,10*60*1000);
+  document.addEventListener("visibilitychange",()=>{ if(!document.hidden) tjekOpdatering(); });
   if("serviceWorker" in navigator&&(location.protocol==="https:"||location.hostname==="localhost")&&HA){ navigator.serviceWorker.register("sw.js").catch(()=>{}); }
 })();
 </script>
