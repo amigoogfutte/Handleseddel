@@ -634,7 +634,7 @@ body.skaerm .hjul .omgang + .fvare{border-top:none}
     let html="";
     for(const s of sk){
       let items=fr.filter(f=>f.skuffe===s.id);
-      if(q) items=items.filter(f=>norm(f.navn).includes(q));
+      if(q) items=items.filter(f=>norm(f.navn).includes(q)||norm(soegeord(f.navn)).includes(q));
       if(q&&!items.length) continue;
       items.sort((a,b)=>a.navn.localeCompare(b.navn,"da"));
       html+='<div class="card skuffe"><div class="sekhead"><h2>'+esc(s.navn)+'</h2><span class="muted">'+items.length+(items.length===1?' vare':' varer')+'</span></div>';
@@ -689,6 +689,7 @@ body.skaerm .hjul .omgang + .fvare{border-top:none}
   const erGammel=f=>udloeb(f)<=Date.now();
   const datoKort=t=>new Date(t).toLocaleDateString("da-DK",{timeZone:TZ,day:"numeric",month:"short",year:"numeric"});
   // ---------- fast lager: kommer under minimum, sættes varen automatisk på sedlen ----------
+  function soegeord(navn){ const l=(laering().frys||{})[norm(navn)]; return (l&&l.soeg)||""; }
   function lagerMin(navn){ const l=(laering().frys||{})[norm(navn)]; return (l&&l.min)||0; }
   function iFryserAntal(navn){ return alle("frys").filter(f=>norm(f.navn)===norm(navn)).reduce((a,f)=>a+(f.antal||0),0); }
   function tjekLager(navn){ const m=lagerMin(navn); if(!m||iFryserAntal(navn)>=m) return false;
@@ -781,6 +782,7 @@ body.skaerm .hjul .omgang + .fvare{border-top:none}
       '<div class="row"><label class="felt grow">Antal<input type="number" id="fAntal" value="'+esc(f.antal)+'" step="any" min="0" inputmode="decimal"></label>'+
       '<label class="felt grow">Enhed<select id="fEnhed">'+enhedValg(f.enhed)+'</select></label></div>'+
       '<label class="felt">Skuffe<select id="fSkuffe">'+opts+'</select></label>'+
+      '<label class="felt">Søgeord (fx is, dessert – så varen findes, selvom ordet ikke står i navnet)<input type="text" id="fSoeg" value="'+esc(soegeord(f.navn))+'" placeholder="is, dessert"></label>'+
       '<label class="felt">Fast lager – mindst (0 = ingen)<input type="number" id="fMin" value="'+lagerMin(f.navn)+'" min="0" step="any" inputmode="decimal"></label>'+
       '<p class="muted" style="margin:4px 0 0">Kommer der færre i fryseren, sættes '+esc(f.navn)+' automatisk på sedlen.</p>'+
       '<div class="knapper"><button class="btn" id="fSeddel">Sæt på sedlen</button></div>'+
@@ -792,6 +794,7 @@ body.skaerm .hjul .omgang + .fvare{border-top:none}
     const gemHoldbar=()=>{ const h=parseInt($("fHoldbar").value,10); if(h>0&&h!==holdbarMdr(f)){ f.holdbar=h; delete f.udloeb; laer("frys",f.navn,{holdbar:h}); } };
     $("fGem").onclick=()=>{ gemHoldbar(); const n=$("fNavn").value.trim(); if(n) f.navn=n; f.antal=parseFloat(String($("fAntal").value).replace(",","."))||0; f.enhed=$("fEnhed").value; f.skuffe=$("fSkuffe").value;
       const mi=Math.max(0,parseFloat(String($("fMin").value).replace(",","."))||0); if(mi!==lagerMin(f.navn)) laer("frys",f.navn,{min:mi});
+      const so=$("fSoeg").value.trim(); if(so!==soegeord(f.navn)) laer("frys",f.navn,{soeg:so});
       if(f.antal<=0){ del(f.id); } else put(f); lukArk(); tjekLager(f.navn); };
     $("fSlet").onclick=()=>{ del(f.id); lukArk(); if(!tjekLager(f.navn)) toast(f.navn+" slettet",()=>put(f)); };
     $("fSeddel").onclick=()=>{ tilfoejVare(f.navn); lukArk(); toast(f.navn+" sat på sedlen"); };
@@ -1365,7 +1368,7 @@ body.skaerm .hjul .omgang + .fvare{border-top:none}
     skalerGamleBilleder();
   })();
   // ---------- opdatering klar ----------
-  const APPVER="1.0.9";
+  const APPVER="1.1.0";
   $("verTekst").textContent="v"+APPVER;
   let nyVer="";
   async function tjekOpdatering(){
