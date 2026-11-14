@@ -87,6 +87,8 @@ input[type=text],input[type=search],input[type=number],input[type=date],select{w
 body.skaerm .fvare .udsaet{font-size:17px;padding:8px 18px}
 .fvare .gtekst{font-size:12px;color:#B3261E;font-weight:600}
 .gammelkort{background:rgba(229,57,53,.12)}
+.fvare .fbill{width:40px;height:40px;object-fit:contain;border-radius:8px;background:#fff;flex:0 0 auto;cursor:pointer}
+body.skaerm .fvare .fbill{width:56px;height:56px}
 .fvare .antal{min-width:58px;text-align:center;font-weight:700;font-size:15px}
 .rund{width:42px;height:42px;border-radius:21px;border:1px solid var(--line);background:#fff;font-size:22px;font-weight:600;cursor:pointer;flex:0 0 auto;display:flex;align-items:center;justify-content:center}
 .rund.plus{background:var(--frost);border-color:#C7DEEA;color:var(--frost-ink)}
@@ -590,7 +592,10 @@ body.skaerm .hjul .omgang + .fvare{border-top:none}
       if(q&&!items.length) continue;
       items.sort((a,b)=>a.navn.localeCompare(b.navn,"da"));
       html+='<div class="card skuffe"><div class="sekhead"><h2>'+esc(s.navn)+'</h2><span class="muted">'+items.length+(items.length===1?' vare':' varer')+'</span></div>';
-      const rk=items.map(f=>{ const g=erGammel(f); return '<div class="fvare'+(g?' gammel':'')+'"><button class="rund" data-minus="'+esc(f.id)+'" aria-label="Tag én ud">−</button>'+
+      const kodeBill={}; alle("kode").forEach(k=>{ if(k.billede){ kodeBill[k.id.slice(2)]=k.billede; if(k.navn) kodeBill["n:"+norm(k.navn)]=k.billede; } });
+      const rk=items.map(f=>{ const g=erGammel(f); const bi=(f.kode&&kodeBill[f.kode])||kodeBill["n:"+norm(f.navn)]||"";
+        return '<div class="fvare'+(g?' gammel':'')+'"><button class="rund" data-minus="'+esc(f.id)+'" aria-label="Tag én ud">−</button>'+
+        (bi?'<img class="fbill" data-fret="'+esc(f.id)+'" src="'+esc(bi)+'" alt="" loading="lazy" onerror="this.remove()">':'')+
         '<div class="navn" data-fret="'+esc(f.id)+'">'+esc(f.navn)+(g?'<div class="gtekst">Gammel · bedst før '+esc(datoKort(udloeb(f)))+'</div>':'')+'</div>'+(g?'<button class="udsaet" data-udsaet="'+esc(f.id)+'">Udsæt 1 måned</button>':'')+'<div class="antal">'+esc(tal(f.antal))+" "+esc(flertal(f.enhed,f.antal))+'</div>'+
         '<button class="rund plus" data-plus="'+esc(f.id)+'" aria-label="Læg én i">+</button></div>'; }).join("");
       // Fryser-skærm: hver kurv er et hjul, man ruller rundt med en finger (som en enarmet tyveknægt)
@@ -1286,7 +1291,7 @@ body.skaerm .hjul .omgang + .fvare{border-top:none}
     await hentMig(); if(ADMIN) rydGamleMine();
   })();
   // ---------- opdatering klar ----------
-  const APPVER="1.0.0";
+  const APPVER="1.0.1";
   $("verTekst").textContent="v"+APPVER;
   let nyVer="";
   async function tjekOpdatering(){
