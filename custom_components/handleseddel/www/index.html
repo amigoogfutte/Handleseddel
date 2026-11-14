@@ -648,10 +648,17 @@ body.skaerm .hjul .omgang + .fvare{border-top:none}
       '<div class="card"><h2 style="font-size:16px">Skuffer i fryseren</h2>'+sk.map((x,i)=>'<div class="row" style="margin-top:8px"><input class="grow" type="text" data-sknavn="'+esc(x.id)+'" value="'+esc(x.navn)+'">'+
         '<button class="iconbtn" data-skop="'+esc(x.id)+'"'+(i===0?" disabled":"")+' aria-label="Flyt op">↑</button><button class="iconbtn" data-skslet="'+esc(x.id)+'" aria-label="Slet">✕</button></div>').join("")+
       '<div class="row" style="margin-top:10px"><input class="grow" type="text" id="nySkuffe" placeholder="Ny skuffe"><button class="btn small" id="tilfSkuffe">Tilføj</button></div>'+
-      (HA?'<button class="btn small" id="genImport" style="margin-top:10px">Hent igen fra Home Assistant-lister</button>':"")+'</div>'+
+      (HA?'<button class="btn small" id="genImport" style="margin-top:10px">Hent igen fra Home Assistant-lister</button>':"")+
+      '<button class="btn small" id="toemFryser" style="margin-top:10px">Tøm fryseren</button><p class="muted" style="margin:6px 0 0">Fjerner alle varer, men beholder skufferne. Varerne kan lægges tilbage under „Taget ud for nylig“.</p></div>'+
       '<div class="card"><h2 style="font-size:16px">Fryser-skærm</h2><p class="muted">Viser kun fryseren med store knapper, holder skærmen tændt og opdaterer hvert 5. sekund. Til en tablet ved fryseren.</p>'+
       '<button class="btn small" id="skaermBtn">'+(SKAERM?"Slå fryser-skærm fra på denne enhed":"Brug denne enhed som fryser-skærm")+'</button></div>'+
       '<div class="knapper"><button class="btn primary" id="lukA">Færdig</button></div>');
+    $("toemFryser").onclick=()=>{
+      const l=alle("frys"); if(!l.length){ toast("Fryseren er allerede tom"); return; }
+      if(!confirm("Tøm fryseren? "+l.length+" varer fjernes. Skufferne bliver.")) return;
+      const nu=Date.now(); l.forEach(f=>put(Object.assign({},f,{deleted:true,slettet:nu})));
+      lukArk(); toast(l.length+" varer fjernet",()=>l.forEach(f=>{ const ny=Object.assign({},f); delete ny.deleted; delete ny.slettet; put(ny); }));
+    };
     $("skaermBtn").onclick=()=>{ location.href=location.pathname+"?skaerm="+(SKAERM?"fra":"fryser"); };
     $("lukA").onclick=()=>{ document.querySelectorAll("[data-sknavn]").forEach(i=>{ const x=get(i.dataset.sknavn); const n=i.value.trim(); if(x&&n&&n!==x.navn){ x.navn=n; put(x); } }); lukArk(); };
     document.querySelectorAll("[data-butik]").forEach(c=>c.onchange=()=>{ const s=indst(); s.butikker=Object.assign({rema:true,netto:true,brugsen:true},s.butikker||{}); s.butikker[c.dataset.butik]=c.checked; put(s); matchCache.clear(); render(); });
@@ -717,7 +724,7 @@ body.skaerm .hjul .omgang + .fvare{border-top:none}
   function fjernede(){
     const graense=Date.now()-60*24*3600*1000;
     return Object.values(db.records).filter(r=>r&&r.kind==="frys"&&r.deleted&&r.navn&&(r.slettet||r.updated||0)>graense)
-      .sort((a,b)=>(b.slettet||b.updated||0)-(a.slettet||a.updated||0)).slice(0,40);
+      .sort((a,b)=>(b.slettet||b.updated||0)-(a.slettet||a.updated||0)).slice(0,300);
   }
   function renderFjernet(){
     const l=fjernede(); $("fjernetKort").classList.toggle("hidden",!l.length);
