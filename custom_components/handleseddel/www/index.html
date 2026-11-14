@@ -690,6 +690,13 @@ body.skaerm .hjul .omgang + .fvare{border-top:none}
   const datoKort=t=>new Date(t).toLocaleDateString("da-DK",{timeZone:TZ,day:"numeric",month:"short",year:"numeric"});
   // ---------- fast lager: kommer under minimum, sættes varen automatisk på sedlen ----------
   function soegeord(navn){ const l=(laering().frys||{})[norm(navn)]; return (l&&l.soeg)||""; }
+  // Bliver en fryservare magen til en anden (samme navn, kurv og enhed), lægges de sammen til én
+  function fletFrys(f){ const andre=alle("frys").filter(x=>x.id!==f.id&&x.skuffe===f.skuffe&&(x.enhed||"stk")===(f.enhed||"stk")&&norm(x.navn)===norm(f.navn));
+    if(!andre.length) return null; const m=get(f.id); if(!m) return null; m.navn=andre[0].navn;
+    for(const x of andre){ m.antal=Math.round(((m.antal||0)+(x.antal||0))*100)/100; const a=x.lagtInd||x.updated, b=m.lagtInd||m.updated; if(a&&(!b||a<b)) m.lagtInd=a;
+      if(!m.kode&&x.kode) m.kode=x.kode; delete m.udloeb; del(x.id); }
+    put(m); return m; }
+  function fletAlleFrys(){ const set=new Set(); for(const f of alle("frys")){ const k=f.skuffe+"|"+(f.enhed||"stk")+"|"+norm(f.navn); if(set.has(k)) continue; set.add(k); fletFrys(f); } }
   function lagerMin(navn){ const l=(laering().frys||{})[norm(navn)]; return (l&&l.min)||0; }
   function iFryserAntal(navn){ return alle("frys").filter(f=>norm(f.navn)===norm(navn)).reduce((a,f)=>a+(f.antal||0),0); }
   function tjekLager(navn){ const m=lagerMin(navn); if(!m||iFryserAntal(navn)>=m) return false;
@@ -760,7 +767,9 @@ body.skaerm .hjul .omgang + .fvare{border-top:none}
     aabenArk('<h2>Vare</h2><label class="felt">Navn<input type="text" id="rNavn" value="'+esc(v.navn)+'"></label>'+
       '<label class="felt">Varegruppe<select id="rGruppe">'+GRUPPER.map(g=>'<option value="'+g.id+'"'+(g.id===g0?" selected":"")+'>'+esc(g.navn)+'</option>').join("")+'</select></label>'+
       '<div class="knapper"><button class="btn danger" id="rSlet">Slet</button><button class="btn primary" id="rGem">Gem</button></div>');
-    $("rGem").onclick=()=>{ const n=$("rNavn").value.trim(); if(n&&n!==v.navn){ v.navn=n; put(v); }
+    $("rGem").onclick=()=>{ const n=$("rNavn").value.trim(); if(n&&n!==v.navn){ v.navn=n;
+        const dub=alle("vare").find(x=>x.id!==v.id&&!x.taget&&!v.taget&&norm(x.navn)===norm(n));
+        if(dub){ del(v.id); toast(n+" stod allerede på sedlen – lagt sammen"); } else put(v); }
       const g=$("rGruppe").value; if(g!==gruppeFor(v.navn)) laer("gruppe",v.navn,{g}); else render(); lukArk(); };
     $("rSlet").onclick=()=>{ husk(v.navn); del(id); lukArk(); toast(v.navn+" slettet",()=>put(v)); };
   }
@@ -795,7 +804,7 @@ body.skaerm .hjul .omgang + .fvare{border-top:none}
     $("fGem").onclick=()=>{ gemHoldbar(); const n=$("fNavn").value.trim(); if(n) f.navn=n; f.antal=parseFloat(String($("fAntal").value).replace(",","."))||0; f.enhed=$("fEnhed").value; f.skuffe=$("fSkuffe").value;
       const mi=Math.max(0,parseFloat(String($("fMin").value).replace(",","."))||0); if(mi!==lagerMin(f.navn)) laer("frys",f.navn,{min:mi});
       const so=$("fSoeg").value.trim(); if(so!==soegeord(f.navn)) laer("frys",f.navn,{soeg:so});
-      if(f.antal<=0){ del(f.id); } else put(f); lukArk(); tjekLager(f.navn); };
+      if(f.antal<=0){ del(f.id); } else { put(f); const m=fletFrys(f); if(m) toast(m.navn+" er lagt sammen – nu "+tal(m.antal)+" "+flertal(m.enhed,m.antal)); } lukArk(); tjekLager(f.navn); };
     $("fSlet").onclick=()=>{ del(f.id); lukArk(); if(!tjekLager(f.navn)) toast(f.navn+" slettet",()=>put(f)); };
     $("fSeddel").onclick=()=>{ tilfoejVare(f.navn); lukArk(); toast(f.navn+" sat på sedlen"); };
   }
@@ -1365,10 +1374,10 @@ body.skaerm .hjul .omgang + .fvare{border-top:none}
     if(HA) hentNavneTilFjernede();
     if(new URLSearchParams(location.search).get("scan")==="1"){ history.replaceState(null,"",location.pathname); visFane("fryser"); visScanner(); }
     await hentMig(); if(ADMIN) rydGamleMine();
-    skalerGamleBilleder();
+    skalerGamleBilleder(); fletAlleFrys();
   })();
   // ---------- opdatering klar ----------
-  const APPVER="1.1.0";
+  const APPVER="1.1.1";
   $("verTekst").textContent="v"+APPVER;
   let nyVer="";
   async function tjekOpdatering(){
