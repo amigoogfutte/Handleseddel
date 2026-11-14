@@ -94,6 +94,9 @@ body.skaerm .fvare .fbill{width:56px;height:56px}
 #storBill img{width:min(86vw,520px);height:auto;max-height:84vh;object-fit:contain;background:#fff;border-radius:14px;padding:10px}
 #storBill .arkluk{position:absolute;top:16px;right:16px;float:none;margin:0;width:48px;height:48px;font-size:22px}
 #hoverBill{position:fixed;z-index:45;width:260px;height:260px;object-fit:contain;background:#fff;border-radius:12px;padding:8px;box-shadow:0 8px 28px rgba(0,0,0,.3);pointer-events:none}
+.bsgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(96px,1fr));gap:8px;margin-top:8px}
+.bsvalg{border:1px solid var(--line);background:#fff;border-radius:10px;padding:4px;aspect-ratio:1;cursor:pointer}
+.bsvalg img{width:100%;height:100%;object-fit:contain}
 .fvare .antal{min-width:58px;text-align:center;font-weight:700;font-size:15px}
 .rund{width:42px;height:42px;border-radius:21px;border:1px solid var(--line);background:#fff;font-size:22px;font-weight:600;cursor:pointer;flex:0 0 auto;display:flex;align-items:center;justify-content:center}
 .rund.plus{background:var(--frost);border-color:#C7DEEA;color:var(--frost-ink)}
@@ -593,12 +596,35 @@ body.skaerm .hjul .omgang + .fvare{border-top:none}
   function billId(navn){ let h=2166136261; for(const c of norm(navn)){ h^=c.codePointAt(0); h=Math.imul(h,16777619)>>>0; } return "b-"+h.toString(36); }
   function egetBillede(navn){ const r=get(billId(navn)); return r&&r.egen&&r.url?r.url:""; }
   // Billeder nedskaleres til højst 200 px og ca. 12 KB, så de fylder lidt
-  function skalerBillede(kilde){ return new Promise((ok,fejl)=>{ const im=new Image(); im.onerror=fejl;
+  function skalerBillede(kilde){ return new Promise((ok,fejl)=>{ const im=new Image(); im.onerror=fejl; if(/^https?:/.test(kilde)) im.crossOrigin="anonymous";
       im.onload=()=>{ let st=200, q=0.6, url=""; for(let i=0;i<6;i++){ const k=Math.min(1,st/Math.max(im.width,im.height)); const c=document.createElement("canvas");
           c.width=Math.round(im.width*k); c.height=Math.round(im.height*k); const g=c.getContext("2d"); g.fillStyle="#fff"; g.fillRect(0,0,c.width,c.height); g.drawImage(im,0,0,c.width,c.height);
-          url=c.toDataURL("image/jpeg",q); if(url.length<12000) break; st=Math.round(st*0.85); q=Math.max(0.4,q-0.06); }
+          try{ url=c.toDataURL("image/jpeg",q); }catch(e){ return fejl(e); } if(url.length<12000) break; st=Math.round(st*0.85); q=Math.max(0.4,q-0.06); }
         ok(url); }; im.src=kilde; }); }
   function laesBilledeFil(fil){ return new Promise((ok,fejl)=>{ const fr=new FileReader(); fr.onerror=fejl; fr.onload=()=>skalerBillede(fr.result).then(ok,fejl); fr.readAsDataURL(fil); }); }
+  // Søg billeder på nettet: produktfotos fra Open Food Facts og fotos fra Wikimedia Commons (begge gratis)
+  async function soegBilleder(q){
+    const ud=[], set=new Set(); const tilf=(url,titel)=>{ if(url&&!set.has(url)){ set.add(url); ud.push({url,titel}); } };
+    const off=fetch("https://world.openfoodfacts.org/cgi/search.pl?search_terms="+encodeURIComponent(q)+"&search_simple=1&json=1&page_size=12&fields=product_name,image_front_small_url")
+      .then(r=>r.ok?r.json():null).then(j=>{ ((j&&j.products)||[]).forEach(p=>tilf(p.image_front_small_url,p.product_name)); }).catch(()=>{});
+    const com=fetch("https://commons.wikimedia.org/w/api.php?action=query&generator=search&gsrnamespace=6&gsrlimit=12&gsrsearch="+encodeURIComponent(q+" filetype:bitmap")+"&prop=imageinfo&iiprop=url&iiurlwidth=240&format=json&origin=*")
+      .then(r=>r.ok?r.json():null).then(j=>{ Object.values((j&&j.query&&j.query.pages)||{}).sort((a,b)=>(a.index||0)-(b.index||0)).forEach(p=>{ const ii=(p.imageinfo||[])[0]; if(ii) tilf(ii.thumburl||ii.url,(p.title||"").replace(/^File:|\.[a-z]+$/gi,"")); }); }).catch(()=>{});
+    await Promise.all([off,com]); return ud;
+  }
+  function visBilledsoeg(f){
+    aabenArk('<h2>Find billede</h2><form id="bsForm" class="row" autocomplete="off"><input class="grow" type="search" id="bsQ" value="'+esc(f.navn)+'"><button class="btn primary">Søg</button></form>'+
+      '<p class="muted" id="bsStatus">Søger …</p><div id="bsGrid" class="bsgrid"></div><div class="knapper"><button class="btn" id="bsTilbage">Tilbage</button></div>');
+    $("bsTilbage").onclick=()=>retFrys(f.id);
+    const soeg=async()=>{ const q=$("bsQ").value.trim(); if(!q) return; $("bsStatus").textContent="Søger …"; $("bsGrid").innerHTML="";
+      const l=await soegBilleder(q); if(!$("bsGrid")) return;
+      $("bsStatus").textContent=l.length?"Tryk på det billede, du vil bruge.":"Ingen billeder fundet. Prøv et andet ord.";
+      $("bsGrid").innerHTML=l.map((x,i)=>'<button class="bsvalg" data-bs="'+i+'" title="'+esc(x.titel||"")+'"><img src="'+esc(x.url)+'" alt="" loading="lazy" onerror="this.parentNode.remove()"></button>').join("");
+      document.querySelectorAll("[data-bs]").forEach(b=>b.onclick=async()=>{ const x=l[+b.dataset.bs]; $("bsStatus").textContent="Gemmer …";
+        let url=""; try{ url=await skalerBillede(x.url); }catch(e){ url=""; }
+        if(!url||!url.startsWith("data:")) url=x.url; // kan billedet ikke hentes ned, gemmes kun adressen
+        put({id:billId(f.navn),kind:"bill",navn:f.navn,url,egen:true}); toast("Billede gemt"); retFrys(f.id); }); };
+    $("bsForm").onsubmit=e=>{ e.preventDefault(); soeg(); }; soeg();
+  }
   async function skalerGamleBilleder(){ for(const r of alle("bill")){ if(r.egen&&r.url&&r.url.length>15000){ try{ r.url=await skalerBillede(r.url); put(r); }catch(e){} } } }
   function renderFryser(){
     const q=norm($("frysSoeg").value); const sk=skuffer(); const fr=alle("frys");
@@ -742,9 +768,9 @@ body.skaerm .hjul .omgang + .fvare{border-top:none}
     const g=erGammel(f);
     const eget=egetBillede(f.navn);
     aabenArk('<h2>Fryservare</h2>'+(lagt?'<p class="muted">Sidst lagt i: '+esc(lagt)+'</p>':"")+
-      '<div class="row" style="align-items:center;margin:8px 0">'+(eget?'<img src="'+esc(eget)+'" alt="" style="width:64px;height:64px;object-fit:contain;border-radius:10px;background:#fff">':'')+
+      '<div class="row" style="align-items:center;margin:8px 0;flex-wrap:wrap;gap:8px">'+(eget?'<img src="'+esc(eget)+'" alt="" style="width:64px;height:64px;object-fit:contain;border-radius:10px;background:#fff">':'')+
       '<label class="btn" style="cursor:pointer;display:inline-flex;align-items:center">📷 '+(eget?'Skift billede':'Tilføj billede')+'<input type="file" id="fBill" accept="image/*" style="display:none"></label>'+
-      (eget?'<button class="btn" id="fBillSlet">Fjern billede</button>':'')+'</div>'+
+      '<button class="btn" id="fBillSoeg">🔍 Find på nettet</button>'+(eget?'<button class="btn" id="fBillSlet">Fjern billede</button>':'')+'</div>'+
       '<div class="card'+(g?' gammelkort':'')+'"><div class="row" style="align-items:flex-end"><label class="felt" style="width:130px">Holdbar (måneder)<input type="number" id="fHoldbar" value="'+holdbarMdr(f)+'" min="1" max="60" step="1" inputmode="numeric"></label>'+
       '<div class="grow"><div class="muted">'+(g?'<b>Gammel</b> – ':'')+'Bedst før ca. '+esc(datoKort(udloeb(f)))+'</div></div></div>'+
       '</div>'+
@@ -758,6 +784,7 @@ body.skaerm .hjul .omgang + .fvare{border-top:none}
       '<div class="knapper"><button class="btn danger" id="fSlet">Slet</button><button class="btn primary" id="fGem">Gem</button></div>');
     $("fBill").onchange=async e=>{ const fil=e.target.files&&e.target.files[0]; if(!fil) return;
       try{ const url=await laesBilledeFil(fil); put({id:billId(f.navn),kind:"bill",navn:f.navn,url,egen:true}); toast("Billede gemt"); retFrys(f.id); }catch(x){ toast("Kunne ikke læse billedet"); } };
+    $("fBillSoeg").onclick=()=>visBilledsoeg(f);
     if($("fBillSlet")) $("fBillSlet").onclick=()=>{ const r=get(billId(f.navn)); if(r){ r.url=""; r.egen=false; put(r); } retFrys(f.id); };
     const gemHoldbar=()=>{ const h=parseInt($("fHoldbar").value,10); if(h>0&&h!==holdbarMdr(f)){ f.holdbar=h; delete f.udloeb; laer("frys",f.navn,{holdbar:h}); } };
     $("fGem").onclick=()=>{ gemHoldbar(); const n=$("fNavn").value.trim(); if(n) f.navn=n; f.antal=parseFloat(String($("fAntal").value).replace(",","."))||0; f.enhed=$("fEnhed").value; f.skuffe=$("fSkuffe").value;
@@ -1335,7 +1362,7 @@ body.skaerm .hjul .omgang + .fvare{border-top:none}
     skalerGamleBilleder();
   })();
   // ---------- opdatering klar ----------
-  const APPVER="1.0.6";
+  const APPVER="1.0.7";
   $("verTekst").textContent="v"+APPVER;
   let nyVer="";
   async function tjekOpdatering(){
