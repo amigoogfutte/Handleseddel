@@ -1286,7 +1286,7 @@ body.skaerm .hjul .omgang + .fvare{border-top:none}
     await hentMig(); if(ADMIN) rydGamleMine();
   })();
   // ---------- opdatering klar ----------
-  const APPVER="0.9.9";
+  const APPVER="1.0.0";
   $("verTekst").textContent="v"+APPVER;
   let nyVer="";
   async function tjekOpdatering(){
@@ -1303,6 +1303,7 @@ body.skaerm .hjul .omgang + .fvare{border-top:none}
   };
   setTimeout(tjekOpdatering,5000); setInterval(tjekOpdatering,10*60*1000);
   document.addEventListener("visibilitychange",()=>{ if(!document.hidden) tjekOpdatering(); });
+  window.addEventListener("focus",()=>tjekOpdatering());
   if("serviceWorker" in navigator&&(location.protocol==="https:"||location.hostname==="localhost")&&HA){ navigator.serviceWorker.register("sw.js").catch(()=>{}); }
 })();
 </script>
