@@ -97,6 +97,10 @@ body.skaerm .fvare .fbill{width:56px;height:56px}
 .bsgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(96px,1fr));gap:8px;margin-top:8px}
 .bsvalg{border:1px solid var(--line);background:#fff;border-radius:10px;padding:4px;aspect-ratio:1;cursor:pointer}
 .bsvalg img{width:100%;height:100%;object-fit:contain}
+.vejl summary{cursor:pointer;font-size:16px;list-style:none}
+.vejl summary::-webkit-details-marker{display:none}
+.vejl summary::after{content:" ▾";color:var(--muted)}
+.vejl[open] summary::after{content:" ▴"}
 .fvare .antal{min-width:58px;text-align:center;font-weight:700;font-size:15px}
 .rund{width:42px;height:42px;border-radius:21px;border:1px solid var(--line);background:#fff;font-size:22px;font-weight:600;cursor:pointer;flex:0 0 auto;display:flex;align-items:center;justify-content:center}
 .rund.plus{background:var(--frost);border-color:#C7DEEA;color:var(--frost-ink)}
@@ -844,10 +848,29 @@ body.skaerm .hjul .omgang + .fvare{border-top:none}
     boks.querySelectorAll("[data-husslet]").forEach(b=>b.onclick=async()=>{ if(!confirm("Slet husstanden? Dens data gemmes som sikkerhedskopi på Home Assistant.")) return; if(await husKald({handling:"slet",id:b.dataset.husslet})) visHusstande(); });
     $("husOpret").onclick=async()=>{ const n=$("husNy").value.trim(); if(!n) return; if(await husKald({handling:"opret",navn:n})){ toast("Husstand oprettet"); visHusstande(); } };
   }
+  const VEJLEDNING=[
+    ["🛒 Handlesedlen",["Skriv en vare i feltet øverst og tryk Tilføj. Appen foreslår varer, I tit køber.",
+      "Varerne sorteres efter butikkens afdelinger (grønt, mejeri, frost …). Tryk på en vare for at rette navnet eller vælge en anden varegruppe.",
+      "Sæt flueben, når varen er i kurven. „Kopiér handleseddel“ giver en liste, I kan sende til andre.",
+      "Er en vare på tilbud i Rema, Netto eller Brugsen, står butik og pris ved varen. Tryk for at se tilbuddet, eller „Ikke den“, hvis det er en forkert vare."]],
+    ["❄︎ Fryseren",["Varerne ligger i kurve (Øverste kurv, Bund, Til højre). Brug − og + til at tage ud og lægge i.",
+      "Tryk på varens navn for at rette antal, enhed, kurv, holdbarhed, fast lager, søgeord og billede.",
+      "📷 Scan læser stregkoden på en vare (på telefonen). Varer der er scannet, men ikke lagt i, vises øverst.",
+      "Røde varer har ligget for længe (standard 6 måneder). Tryk „Udsæt 1 måned“ på varen, hvis den stadig er god.",
+      "Fast lager: kommer der færre end minimum i fryseren, sættes varen selv på sedlen.",
+      "🍽 Mad foreslår retter ud fra det, der ligger i fryseren – de gamle varer først.",
+      "Har I taget noget ud ved en fejl, kan det lægges tilbage under „Taget ud for nylig“."]],
+    ["🏷 Mine tilbud",["Personlige tilbud fra fx Netto-appen kan lægges ind med et billede – appen læser tilbuddene selv. Alle kan se dem, kun en administrator kan rette."]],
+    ["📱 Tablet ved fryseren",["Tabletten viser kun fryseren i stor skrift og tænder, når nogen går forbi sensoren. Kurvene kan rulles med en finger."]],
+    ["👪 Husstande",["Hver husstand har sin egen seddel og fryser. En administrator vælger under Husstand nedenfor, hvilken husstand hver bruger hører til. Nye brugere starter med „Ingen“."]],
+    ["🔄 Opdateringer",["Kommer der en ny udgave, viser appen en grøn knap øverst. Tryk på den én gang. Versionen står under ⚙︎."]]
+  ];
+  function vejledningHtml(){ return '<details class="card vejl"><summary><b>📖 Sådan bruger du appen</b></summary>'+
+    VEJLEDNING.map(([t,l])=>'<h3 style="font-size:15px;margin:14px 0 4px">'+t+'</h3><ul style="margin:0;padding-left:20px">'+l.map(x=>'<li style="margin:3px 0">'+esc(x)+'</li>').join("")+'</ul>').join("")+'</details>'; }
   function visIndst(){
     const s=indst(); const b=s.butikker||{};
     const sk=skuffer();
-    aabenArk('<h2>Indstillinger</h2>'+
+    aabenArk('<h2>Indstillinger</h2>'+vejledningHtml()+
       (HA?'<div class="card"><h2 style="font-size:16px">Husstand</h2><p style="margin:4px 0">'+(HUSSTAND==="ingen"?'Du er <b>ikke tilknyttet</b> en husstand.':'Du hører til <b>'+esc(HUSNAVN||"Rønningevej 12")+'</b>. Du ser kun husstandens egen seddel og fryser.')+'</p>'+
         (ADMIN?'<div id="husBoks"><p class="muted">Henter husstande …</p></div>':'')+'</div>':'')+
       '<div class="card"><h2 style="font-size:16px">Butikker med tilbud</h2>'+Object.keys(BUTIKKER).map(k=>'<label class="toggle">'+BUTIKKER[k]+'<input type="checkbox" data-butik="'+k+'"'+(b[k]!==false?" checked":"")+'></label>').join("")+
@@ -1413,7 +1436,7 @@ body.skaerm .hjul .omgang + .fvare{border-top:none}
     skalerGamleBilleder(); fletAlleFrys();
   })();
   // ---------- opdatering klar ----------
-  const APPVER="1.2.2";
+  const APPVER="1.2.3";
   $("verTekst").textContent="v"+APPVER;
   let nyVer="";
   async function tjekOpdatering(){
