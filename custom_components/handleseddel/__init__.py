@@ -111,6 +111,7 @@ class Store:
 
 
 STANDARD_HUSSTAND = "hjem"
+INGEN = "ingen"  # bruger uden adgang til nogen husstand
 
 
 class Husstande:
@@ -146,19 +147,31 @@ class Husstande:
 
     def for_bruger(self, user_id: str | None) -> tuple[str, str]:
         d = self.laes()
-        hid = d["brugere"].get(user_id or "", STANDARD_HUSSTAND)
-        if hid not in d["husstande"]:
-            hid = STANDARD_HUSSTAND
+        hid = d["brugere"].get(user_id or "", d.get("ny", STANDARD_HUSSTAND))
+        if hid == INGEN or hid not in d["husstande"]:
+            return INGEN, "Ingen"
         return hid, d["husstande"][hid].get("navn", hid)
+
+    def migrer(self, bruger_ids: list[str]) -> None:
+        """Første gang: alle nuværende brugere beholder adgang til standard-husstanden,
+        og nye brugere starter uden adgang ("ingen"), indtil en administrator vælger for dem."""
+        with self._laas:
+            d = self.laes()
+            if "ny" in d:
+                return
+            for uid in bruger_ids:
+                d["brugere"].setdefault(uid, STANDARD_HUSSTAND)
+            d["ny"] = INGEN
+            self._skriv(d)
 
     def store(self, hid: str) -> Store:
         if hid not in self._stores:
             self._stores[hid] = Store(str(self.root), f"data-{hid}.json")
         return self._stores[hid]
 
-    def store_for(self, user) -> tuple[str, Store]:
+    def store_for(self, user) -> tuple[str, Store | None]:
         hid, _ = self.for_bruger(getattr(user, "id", None))
-        return hid, self.store(hid)
+        return hid, (None if hid == INGEN else self.store(hid))
 
     def aendr(self, handling: str, obj: dict) -> dict:
         with self._laas:
@@ -180,12 +193,9 @@ class Husstande:
                 d["husstande"][hid]["navn"] = navn
             elif handling == "tildel":
                 uid, hid = obj.get("bruger"), obj.get("husstand")
-                if not isinstance(uid, str) or hid not in d["husstande"]:
+                if not isinstance(uid, str) or (hid != INGEN and hid not in d["husstande"]):
                     raise ValueError("Ukendt bruger eller husstand")
-                if hid == STANDARD_HUSSTAND:
-                    d["brugere"].pop(uid, None)
-                else:
-                    d["brugere"][uid] = hid
+                d["brugere"][uid] = hid
             elif handling == "slet":
                 hid = obj.get("id")
                 if hid == STANDARD_HUSSTAND or hid not in d["husstande"]:
@@ -212,11 +222,13 @@ class HusstandView(HomeAssistantView):
 
     async def _svar(self, d: dict) -> web.Response:
         users = await self.hass.auth.async_get_users()
-        brugere = [
-            {"id": u.id, "navn": u.name or "", "husstand": d["brugere"].get(u.id, STANDARD_HUSSTAND) if d["brugere"].get(u.id) in d["husstande"] else STANDARD_HUSSTAND}
-            for u in users
-            if not u.system_generated and u.is_active
-        ]
+        ny = d.get("ny", STANDARD_HUSSTAND)
+
+        def hus(uid: str) -> str:
+            h = d["brugere"].get(uid, ny)
+            return h if h in d["husstande"] else INGEN
+
+        brugere = [{"id": u.id, "navn": u.name or "", "husstand": hus(u.id)} for u in users if not u.system_generated and u.is_active]
         husstande = [{"id": k, "navn": v.get("navn", k), "standard": k == STANDARD_HUSSTAND} for k, v in d["husstande"].items()]
         return self.json({"husstande": husstande, "brugere": sorted(brugere, key=lambda b: b["navn"].lower())})
 
@@ -257,6 +269,8 @@ class SyncView(HomeAssistantView):
 
     async def get(self, request: web.Request) -> web.Response:
         hid, store = await self.hass.async_add_executor_job(self.hus.store_for, request.get("hass_user"))
+        if store is None:
+            return self.json({"message": "Ingen adgang", "husstand": INGEN}, 403)
         data = await self.hass.async_add_executor_job(store.sync, [])
         return self.json({"poster": list(data.values()), "husstand": hid})
 
@@ -274,6 +288,8 @@ class SyncView(HomeAssistantView):
         user = request.get("hass_user")
         admin = bool(user and user.is_admin)
         hid, store = await self.hass.async_add_executor_job(self.hus.store_for, user)
+        if store is None:
+            return self.json({"message": "Ingen adgang", "husstand": INGEN}, 403)
         # Har enheden data fra en anden husstand (fx efter skift af bruger), må de ikke blandes ind.
         if isinstance(obj.get("husstand"), str) and obj["husstand"] and obj["husstand"] != hid:
             return self.json({"husstand": hid, "skift": True}, 409)
@@ -328,6 +344,8 @@ class ImportView(HomeAssistantView):
 
     async def post(self, request: web.Request) -> web.Response:
         hid, store = await self.hass.async_add_executor_job(self.hus.store_for, request.get("hass_user"))
+        if store is None:
+            return self.json({"message": "Ingen adgang", "husstand": INGEN}, 403)
         if hid != STANDARD_HUSSTAND:
             # Home Assistants egne lister hører til standard-husstanden – andre husstande starter tomme.
             data = await self.hass.async_add_executor_job(store.sync, [])
@@ -683,6 +701,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         await hass.http.async_register_static_paths([StaticPathConfig(APP_URL, str(WWW), False)])
         tilbud = Tilbud(hass, store)
         hus = Husstande(hass.config.path(STORAGE_DIR), store)
+        users = await hass.auth.async_get_users()
+        await hass.async_add_executor_job(hus.migrer, [u.id for u in users if not u.system_generated])
         for view in (SyncView(hass, hus), ImportView(hass, hus), TilbudView(tilbud), LaesView(hass), MigView(hass, hus),
                      HusstandView(hass, hus), AppRedirectView()):
             hass.http.register_view(view)
