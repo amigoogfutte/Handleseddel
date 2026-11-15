@@ -871,7 +871,15 @@ body.skaerm .hjul .omgang + .fvare{border-top:none}
     const s=indst(); const b=s.butikker||{};
     const sk=skuffer();
     aabenArk('<h2>Indstillinger</h2>'+vejledningHtml()+
-      (HA?'<div class="card"><h2 style="font-size:16px">Husstand</h2><p style="margin:4px 0">'+(HUSSTAND==="ingen"?'Du er <b>ikke tilknyttet</b> en husstand.':'Du hører til <b>'+esc(HUSNAVN||"Rønningevej 12")+'</b>. Du ser kun husstandens egen seddel og fryser.')+'</p>'+
+      (HA?'<div class="card"><div class="sekhead"><h2 style="font-size:16px">Husstand</h2><button class="iconbtn" id="husInfoBtn" aria-label="Hvad er husstande?">ⓘ</button></div>'+
+        '<div id="husInfoTekst" class="hidden muted" style="font-size:13px;margin:4px 0 8px">'+
+        '<p style="margin:4px 0">En husstand har sin egen handleseddel, fryser, fast lager og „Mine tilbud“. Brugere i én husstand kan ikke se de andre husstandes lister. Tilbud fra butikkerne er fælles.</p>'+
+        '<p style="margin:4px 0"><b>Ny husstand:</b> skriv navnet nederst under Husstande og tryk Opret.</p>'+
+        '<p style="margin:4px 0"><b>Knyt en bruger:</b> vælg husstanden ud for brugeren under Brugere. Brugeren skal først oprettes i Home Assistant under Indstillinger → Personer.</p>'+
+        '<p style="margin:4px 0"><b>Ingen:</b> brugeren har ingen adgang til lister. Nye brugere starter her.</p>'+
+        '<p style="margin:4px 0"><b>Omdøb:</b> ret navnet og tryk Gem. <b>Slet:</b> tryk ✕ – det kan kun lade sig gøre, når ingen brugere hører til husstanden. Dens data gemmes som sikkerhedskopi.</p>'+
+        '<p style="margin:4px 0">Rønningevej 12 er standard-husstanden og kan ikke slettes. Kun administratorer kan ændre husstande.</p></div>'+
+        '<p style="margin:4px 0">'+(HUSSTAND==="ingen"?'Du er <b>ikke tilknyttet</b> en husstand.':'Du hører til <b>'+esc(HUSNAVN||"Rønningevej 12")+'</b>. Du ser kun husstandens egen seddel og fryser.')+'</p>'+
         (ADMIN?'<div id="husBoks"><p class="muted">Henter husstande …</p></div>':'')+'</div>':'')+
       '<div class="card"><h2 style="font-size:16px">Butikker med tilbud</h2>'+Object.keys(BUTIKKER).map(k=>'<label class="toggle">'+BUTIKKER[k]+'<input type="checkbox" data-butik="'+k+'"'+(b[k]!==false?" checked":"")+'></label>').join("")+
       '<button class="btn small" id="tFrisk" style="margin-top:8px">Hent tilbud igen</button></div>'+
@@ -893,6 +901,7 @@ body.skaerm .hjul .omgang + .fvare{border-top:none}
       const nu=Date.now(); l.forEach(f=>put(Object.assign({},f,{deleted:true,slettet:nu})));
       lukArk(); toast(l.length+" varer fjernet",()=>l.forEach(f=>{ const ny=Object.assign({},f); delete ny.deleted; delete ny.slettet; put(ny); }));
     };
+    if($("husInfoBtn")) $("husInfoBtn").onclick=()=>$("husInfoTekst").classList.toggle("hidden");
     if(HA&&ADMIN) visHusstande();
     $("lagerTilf").onclick=()=>{ const n=$("lagerNavn").value.trim(), m=parseFloat(String($("lagerMin").value).replace(",","."))||0; if(!n||m<=0) return;
       laer("frys",n,{min:m}); tjekLager(n); visIndst(); };
@@ -1436,7 +1445,7 @@ body.skaerm .hjul .omgang + .fvare{border-top:none}
     skalerGamleBilleder(); fletAlleFrys();
   })();
   // ---------- opdatering klar ----------
-  const APPVER="1.2.3";
+  const APPVER="1.2.4";
   $("verTekst").textContent="v"+APPVER;
   let nyVer="";
   async function tjekOpdatering(){
