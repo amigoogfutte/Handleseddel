@@ -1478,7 +1478,7 @@ body.skaerm .hjul .omgang + .fvare{border-top:none}
     skalerGamleBilleder(); fletAlleFrys();
   })();
   // ---------- opdatering klar ----------
-  const APPVER="1.3.1";
+  const APPVER="1.3.2";
   $("verTekst").textContent="v"+APPVER;
   let nyVer="";
   async function tjekOpdatering(){
@@ -1502,7 +1502,7 @@ body.skaerm .hjul .omgang + .fvare{border-top:none}
   (function(){ let o=null; try{ o=JSON.parse(localStorage.getItem("hs_opd")||"null"); }catch(e){} if(!o) return;
     const ok=o.til?verCmp(APPVER,o.til)>=0:verCmp(APPVER,o.fra)>0;
     if(ok){ try{ localStorage.removeItem("hs_opd"); }catch(e){} setTimeout(()=>toast("Opdateret fra v"+o.fra+" til v"+APPVER),600); return; }
-    if((o.forsoeg||1)<3){ $("opdBanner").textContent="Opdaterer igen …"; $("opdBanner").classList.remove("hidden"); setTimeout(()=>opdater(o.til,(o.forsoeg||1)+1,true),800); return; }
+    if((o.forsoeg||1)<3){ const n=(o.forsoeg||1)+1; $("opdBanner").textContent="Ikke opdateret endnu – prøver igen ("+n+" af 3) …"; $("opdBanner").classList.remove("hidden"); setTimeout(()=>opdater(o.til,n,true),2000); return; }
     try{ localStorage.removeItem("hs_opd"); }catch(e){}
     setTimeout(()=>toast("Opdateringen lykkedes ikke – luk appen helt og åbn den igen"),600);
   })();
