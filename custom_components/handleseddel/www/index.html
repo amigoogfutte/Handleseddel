@@ -50,6 +50,14 @@ input[type=text],input[type=search],input[type=number],input[type=date],select{w
 #syncBar.login,#syncBar.error{background:#FDECEA;color:var(--danger)}
 
 /* Seddel */
+.acwrap{position:relative}
+.acliste{position:absolute;left:0;right:0;top:100%;z-index:20;background:#fff;border:2px solid var(--ink);border-top:none;border-radius:0 0 12px 12px;box-shadow:0 8px 20px rgba(0,0,0,.12);overflow:hidden}
+.acliste.hidden{display:none}
+.acwrap.aaben input{border-bottom-left-radius:0;border-bottom-right-radius:0}
+.acvalg{display:flex;justify-content:space-between;align-items:center;padding:11px 14px;cursor:pointer;border-top:1px dashed rgba(0,0,0,.08);font-size:16px}
+.acvalg:first-child{border-top:none}
+.acvalg:hover,.acvalg.valgt{background:#EEF3F7}
+.acvalg .muted{font-size:12px}
 .add{position:sticky;top:0;z-index:4;background:var(--bg);padding:8px 0 4px;margin:0}
 .gruppehead{font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:var(--muted,#6b7280);padding:14px 0 2px}
 .gruppehead:first-child{padding-top:2px}
@@ -188,12 +196,11 @@ body.skaerm .hjul .omgang + .fvare{border-top:none}
   <section id="v-seddel">
     <form class="add" id="addForm" autocomplete="off">
       <div class="row">
-        <input class="grow" type="text" id="addInput" placeholder="Tilføj vare …" enterkeyhint="done" autocomplete="off">
+        <div class="grow acwrap"><input type="text" id="addInput" placeholder="Tilføj vare …" enterkeyhint="done" autocomplete="off" style="width:100%"><div id="ofte" class="acliste hidden" role="listbox"></div></div>
         <button class="btn primary" type="submit">Tilføj</button>
       </div>
       <datalist id="forslag"></datalist>
       <datalist id="mineForslag"></datalist>
-      <div class="info" id="ofte" style="margin-top:8px"></div>
     </form>
     <div class="card" id="seddelKort"><div id="seddelListe"></div></div>
     <div class="knapper" style="display:flex;margin-top:12px"><button class="btn" id="kopierBtn" style="flex:1">📋 Kopiér handleseddel</button></div>
@@ -571,15 +578,25 @@ body.skaerm .hjul .omgang + .fvare{border-top:none}
   // Forslag kommer først, når man skriver – de varer I køber mest, der passer til det skrevne
   function renderOfte(){
     const q=norm(($("addInput")||{}).value||"");
-    if(!q){ $("ofte").innerHTML=""; return; }
+    if(!q){ $("ofte").innerHTML=""; $("ofte").classList.add("hidden"); $("ofte").parentNode.classList.remove("aaben"); return; }
     const paa=new Set(alle("vare").filter(v=>!v.taget).map(v=>norm(v.navn)));
     const score=h=>{ const n=norm(h.navn); return n.startsWith(q)?3:n.split(" ").some(w=>w.startsWith(q))?2:n.includes(q)?1:0; };
     const l=alle("historik").filter(h=>(h.n||0)>0&&!paa.has(norm(h.navn))&&norm(h.navn)!==q&&score(h)>0)
       .sort((a,b)=>score(b)-score(a)||(b.n||0)-(a.n||0)||(b.sidst||0)-(a.sidst||0)).slice(0,8);
-    $("ofte").innerHTML=l.map(h=>'<span class="pille ofte" data-ofte="'+esc(h.navn)+'">+ '+esc(h.navn)+'</span>').join("");
+    acValgt=-1;
+    $("ofte").innerHTML=l.map(h=>'<div class="acvalg" role="option" data-ofte="'+esc(h.navn)+'"><span>'+esc(h.navn)+'</span><span class="muted">købt '+(h.n||0)+' gange</span></div>').join("");
+    const vis=l.length>0&&document.activeElement===$("addInput"); $("ofte").classList.toggle("hidden",!vis); $("ofte").parentNode.classList.toggle("aaben",vis);
   }
   document.addEventListener("click",e=>{ const b=e.target.closest("[data-ofte]"); if(!b) return; tilfoejVare(b.dataset.ofte); const i=$("addInput"); i.value=""; renderOfte(); i.focus(); });
+  let acValgt=-1;
   $("addInput").addEventListener("input",renderOfte);
+  $("addInput").addEventListener("focus",renderOfte);
+  $("addInput").addEventListener("blur",()=>setTimeout(()=>{ if(document.activeElement!==$("addInput")){ $("ofte").classList.add("hidden"); $("ofte").parentNode.classList.remove("aaben"); } },150));
+  $("ofte").addEventListener("mousedown",e=>e.preventDefault()); // behold fokus i feltet, når man trykker på et forslag
+  $("addInput").addEventListener("keydown",e=>{ const v=[...$("ofte").querySelectorAll(".acvalg")]; if(!v.length||$("ofte").classList.contains("hidden")) return;
+    if(e.key==="ArrowDown"||e.key==="ArrowUp"){ e.preventDefault(); acValgt=(acValgt+(e.key==="ArrowDown"?1:-1)+v.length)%v.length; v.forEach((x,i)=>x.classList.toggle("valgt",i===acValgt)); }
+    else if(e.key==="Enter"&&acValgt>=0){ e.preventDefault(); v[acValgt].click(); }
+    else if(e.key==="Escape"){ $("ofte").classList.add("hidden"); $("ofte").parentNode.classList.remove("aaben"); } });
   // Fælles hukommelse for alle enheder: sidste enhed/antal pr. fryservare og sidste værdier pr. eget tilbud.
   function laering(){ return get("laering")||{id:"laering",kind:"laering",frys:{},tilbud:{}}; }
   function laer(del2,navn,val){ const r=laering(); r[del2]=r[del2]||{}; r[del2][norm(navn)]=Object.assign({},del2==="frys"?(r[del2][norm(navn)]||{}):{},val,{navn,t:Date.now()});
@@ -1450,7 +1467,7 @@ body.skaerm .hjul .omgang + .fvare{border-top:none}
     skalerGamleBilleder(); fletAlleFrys();
   })();
   // ---------- opdatering klar ----------
-  const APPVER="1.2.5";
+  const APPVER="1.2.6";
   $("verTekst").textContent="v"+APPVER;
   let nyVer="";
   async function tjekOpdatering(){
