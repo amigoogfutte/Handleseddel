@@ -1478,21 +1478,34 @@ body.skaerm .hjul .omgang + .fvare{border-top:none}
     skalerGamleBilleder(); fletAlleFrys();
   })();
   // ---------- opdatering klar ----------
-  const APPVER="1.2.9";
+  const APPVER="1.3.0";
   $("verTekst").textContent="v"+APPVER;
   let nyVer="";
   async function tjekOpdatering(){
     try{ const r=await fetch("version.json?t="+Date.now(),{cache:"no-store"}); if(!r.ok) return;
-      const v=(await r.json()).v; if(v&&v!==APPVER){ nyVer=v; $("opdBanner").classList.remove("hidden"); } }catch(e){}
+      const v=(await r.json()).v; if(v&&verCmp(v,APPVER)>0){ nyVer=v; $("opdBanner").classList.remove("hidden"); } }catch(e){}
   }
-  $("opdBanner").onclick=async()=>{
-    $("opdBanner").textContent="Opdaterer …";
+  // Sammenlign versioner som tal: "1.2.10" > "1.2.9"
+  function verCmp(a,b){ const x=String(a||"").split(".").map(n=>+n||0), y=String(b||"").split(".").map(n=>+n||0);
+    for(let i=0;i<Math.max(x.length,y.length);i++){ if((x[i]||0)!==(y[i]||0)) return (x[i]||0)>(y[i]||0)?1:-1; } return 0; }
+  async function opdater(til,forsoeg,haardt){
+    try{ localStorage.setItem("hs_opd",JSON.stringify({fra:APPVER,til:til||"",forsoeg})); }catch(e){}
     try{ if(window.caches){ const k=await caches.keys(); await Promise.all(k.map(x=>caches.delete(x))); } }catch(e){}
-    try{ if(navigator.serviceWorker){ const regs=await navigator.serviceWorker.getRegistrations(); await Promise.all(regs.map(r=>r.update().catch(()=>{}))); } }catch(e){}
+    try{ if(navigator.serviceWorker){ const regs=await navigator.serviceWorker.getRegistrations();
+      await Promise.all(regs.map(r=>haardt?r.unregister().catch(()=>{}):r.update().catch(()=>{}))); } }catch(e){}
     // Hent den nye side uden om browserens cache (ellers kan den gamle udgave komme igen)
     try{ await fetch(location.pathname,{cache:"reload"}); }catch(e){}
-    location.replace(location.pathname+"?v="+encodeURIComponent(nyVer||Date.now()));
-  };
+    location.replace(location.pathname+"?v="+encodeURIComponent(til||Date.now())+(haardt?"&r="+Date.now():""));
+  }
+  $("opdBanner").onclick=()=>{ $("opdBanner").textContent="Opdaterer …"; opdater(nyVer,1,false); };
+  // Efter genindlæsning: blev appen faktisk opdateret? Ellers prøv igen (højst 3 gange)
+  (function(){ let o=null; try{ o=JSON.parse(localStorage.getItem("hs_opd")||"null"); }catch(e){} if(!o) return;
+    const ok=o.til?verCmp(APPVER,o.til)>=0:verCmp(APPVER,o.fra)>0;
+    if(ok){ try{ localStorage.removeItem("hs_opd"); }catch(e){} setTimeout(()=>toast("Opdateret fra v"+o.fra+" til v"+APPVER),600); return; }
+    if((o.forsoeg||1)<3){ $("opdBanner").textContent="Opdaterer igen …"; $("opdBanner").classList.remove("hidden"); setTimeout(()=>opdater(o.til,(o.forsoeg||1)+1,true),800); return; }
+    try{ localStorage.removeItem("hs_opd"); }catch(e){}
+    setTimeout(()=>toast("Opdateringen lykkedes ikke – luk appen helt og åbn den igen"),600);
+  })();
   setTimeout(tjekOpdatering,5000); setInterval(tjekOpdatering,10*60*1000);
   document.addEventListener("visibilitychange",()=>{ if(!document.hidden) tjekOpdatering(); });
   window.addEventListener("focus",()=>tjekOpdatering());
