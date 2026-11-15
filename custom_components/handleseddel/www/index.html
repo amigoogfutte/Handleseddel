@@ -51,6 +51,10 @@ input[type=text],input[type=search],input[type=number],input[type=date],select{w
 
 /* Seddel */
 .acwrap{position:relative}
+.ryd{position:absolute;right:8px;top:24px;transform:translateY(-50%);width:30px;height:30px;border-radius:15px;border:none;background:#E3E8EE;color:#334;font-size:15px;line-height:1;cursor:pointer;display:flex;align-items:center;justify-content:center;z-index:3}
+.ryd.hidden{display:none}
+.acwrap input{padding-right:44px}
+input[type=search]::-webkit-search-cancel-button{display:none}
 .acliste{position:absolute;left:0;right:0;top:100%;z-index:20;background:#fff;border:2px solid var(--ink);border-top:none;border-radius:0 0 12px 12px;box-shadow:0 8px 20px rgba(0,0,0,.12);overflow:hidden}
 .acliste.hidden{display:none}
 .acwrap.aaben input{border-bottom-left-radius:0;border-bottom-right-radius:0}
@@ -218,7 +222,7 @@ body.skaerm .hjul .omgang + .fvare{border-top:none}
       <form id="mangelForm" autocomplete="off"><input type="text" id="mangelInput" placeholder="Mangler noget? Skriv det på sedlen …" list="forslag" style="flex:1"><button class="btn primary">På sedlen</button></form>
       <div class="ur" id="skaermInfo"></div>
     </div>
-    <div class="add"><div class="row"><input class="grow" type="search" id="frysSoeg" placeholder="Søg i fryseren …"><button class="btn" id="madBtn" aria-label="Madforslag">🍽 Mad</button><button class="btn primary" id="scanBtn" aria-label="Scan stregkode">📷 Scan</button></div></div>
+    <div class="add"><div class="row"><div class="grow acwrap"><input type="search" id="frysSoeg" placeholder="Søg i fryseren …" style="width:100%"></div><button class="btn" id="madBtn" aria-label="Madforslag">🍽 Mad</button><button class="btn primary" id="scanBtn" aria-label="Scan stregkode">📷 Scan</button></div></div>
     <div id="skuffer"></div>
     <div class="card hidden" id="scannetKort">
       <h2>Scannet, men ikke lagt i</h2>
@@ -551,7 +555,7 @@ body.skaerm .hjul .omgang + .fvare{border-top:none}
   function billedeFor(v){ if(v.taget) return ""; const t=tilbudFor(v.navn).find(x=>x.egen&&x.billede); return t?t.billede:""; }
   function fAntal(f){ if((!f.enhed||f.enhed==="stk")&&f.antal===1&&/\d/.test(f.navn)) return f.navn; return tal(f.antal)+" "+flertal(f.enhed,f.antal)+" "+f.navn; }
 
-  $("addForm").onsubmit=e=>{ e.preventDefault(); const n=$("addInput").value.trim(); if(!n) return; tilfoejVare(n); $("addInput").value=""; renderOfte(); };
+  $("addForm").onsubmit=e=>{ e.preventDefault(); const n=$("addInput").value.trim(); if(!n) return; tilfoejVare(n); $("addInput").value=""; renderOfte(); rydAdd(); };
   function tilfoejVare(n){
     const findes=alle("vare").find(v=>!v.taget&&norm(v.navn)===norm(n));
     if(findes){ toast(n+" står allerede på sedlen"); return; }
@@ -587,7 +591,7 @@ body.skaerm .hjul .omgang + .fvare{border-top:none}
     $("ofte").innerHTML=l.map(h=>'<div class="acvalg" role="option" data-ofte="'+esc(h.navn)+'"><span>'+esc(h.navn)+'</span><span class="muted">købt '+(h.n||0)+' gange</span></div>').join("");
     const vis=l.length>0&&document.activeElement===$("addInput"); $("ofte").classList.toggle("hidden",!vis); $("ofte").parentNode.classList.toggle("aaben",vis);
   }
-  document.addEventListener("click",e=>{ const b=e.target.closest("[data-ofte]"); if(!b) return; tilfoejVare(b.dataset.ofte); const i=$("addInput"); i.value=""; renderOfte(); i.focus(); });
+  document.addEventListener("click",e=>{ const b=e.target.closest("[data-ofte]"); if(!b) return; tilfoejVare(b.dataset.ofte); const i=$("addInput"); i.value=""; renderOfte(); rydAdd(); i.focus(); });
   let acValgt=-1;
   $("addInput").addEventListener("input",renderOfte);
   $("addInput").addEventListener("focus",renderOfte);
@@ -699,6 +703,12 @@ body.skaerm .hjul .omgang + .fvare{border-top:none}
     const n=fr.filter(f=>(f.antal||0)>0).length; const t=$("talFryser"); t.textContent=n; t.classList.toggle("hidden",!n);
   }
   $("frysSoeg").oninput=renderFryser;
+  // Ryd-knap (✕) i skrivefelterne
+  function rydKnap(inp,efter){ const b=document.createElement("button"); b.type="button"; b.className="ryd hidden"; b.textContent="✕"; b.setAttribute("aria-label","Ryd");
+    inp.parentNode.appendChild(b); const opd=()=>b.classList.toggle("hidden",!inp.value);
+    inp.addEventListener("input",opd); b.addEventListener("mousedown",e=>e.preventDefault());
+    b.onclick=()=>{ inp.value=""; opd(); efter(); inp.focus(); }; return opd; }
+  const rydAdd=rydKnap($("addInput"),renderOfte), rydFrys=rydKnap($("frysSoeg"),renderFryser);
   function nyFrysForm(id){ aabenNy=id; renderFryser(); const f=document.querySelector('.nyfrys input[name=navn]'); if(f) f.focus(); }
   // Når en kendt vare skrives, foreslås samme enhed og antal som sidst
   document.addEventListener("input",e=>{
@@ -1467,7 +1477,7 @@ body.skaerm .hjul .omgang + .fvare{border-top:none}
     skalerGamleBilleder(); fletAlleFrys();
   })();
   // ---------- opdatering klar ----------
-  const APPVER="1.2.7";
+  const APPVER="1.2.8";
   $("verTekst").textContent="v"+APPVER;
   let nyVer="";
   async function tjekOpdatering(){
