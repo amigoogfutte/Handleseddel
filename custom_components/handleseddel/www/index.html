@@ -838,7 +838,7 @@ body.skaerm .hjul .omgang + .fvare{border-top:none}
       '<div class="row"><label class="felt grow">Antal<input type="number" id="fAntal" value="'+esc(f.antal)+'" step="any" min="0" inputmode="decimal"></label>'+
       '<label class="felt grow">Enhed<select id="fEnhed">'+enhedValg(f.enhed)+'</select></label></div>'+
       '<label class="felt">Skuffe<select id="fSkuffe">'+opts+'</select></label>'+
-      '<label class="felt">Søgeord (fx is, dessert – så varen findes, selvom ordet ikke står i navnet)<input type="text" id="fSoeg" value="'+esc(soegeord(f.navn))+'" placeholder="is, dessert"></label>'+
+      '<label class="felt">Søgeord – adskil med komma (fx is, dessert). Så findes varen, selvom ordet ikke står i navnet<input type="text" id="fSoeg" value="'+esc(soegeord(f.navn))+'" placeholder="is, dessert"></label>'+
       '<label class="felt">Fast lager – mindst (0 = ingen)<input type="number" id="fMin" value="'+lagerMin(f.navn)+'" min="0" step="any" inputmode="decimal"></label>'+
       '<p class="muted" style="margin:4px 0 0">Kommer der færre i fryseren, sættes '+esc(f.navn)+' automatisk på sedlen.</p>'+
       '<div class="knapper"><button class="btn" id="fSeddel">Sæt på sedlen</button></div>'+
@@ -889,6 +889,7 @@ body.skaerm .hjul .omgang + .fvare{border-top:none}
       "Tryk på varens navn for at rette antal, enhed, kurv, holdbarhed, fast lager, søgeord og billede.",
       "📷 Scan læser stregkoden på en vare (på telefonen). Varer der er scannet, men ikke lagt i, vises øverst.",
       "Røde varer har ligget for længe (standard 6 måneder). Tryk „Udsæt 1 måned“ på varen, hvis den stadig er god.",
+      "Søgeord: giv en vare ekstra ord, så den findes i søgningen, selvom ordet ikke står i navnet. Flere søgeord adskilles med komma, fx: is, dessert, lagkage.",
       "Fast lager: kommer der færre end minimum i fryseren, sættes varen selv på sedlen.",
       "🍽 Mad foreslår retter ud fra det, der ligger i fryseren – de gamle varer først.",
       "Har I taget noget ud ved en fejl, kan det lægges tilbage under „Taget ud for nylig“."]],
@@ -1477,7 +1478,7 @@ body.skaerm .hjul .omgang + .fvare{border-top:none}
     skalerGamleBilleder(); fletAlleFrys();
   })();
   // ---------- opdatering klar ----------
-  const APPVER="1.2.8";
+  const APPVER="1.2.9";
   $("verTekst").textContent="v"+APPVER;
   let nyVer="";
   async function tjekOpdatering(){
