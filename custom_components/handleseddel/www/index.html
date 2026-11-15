@@ -580,7 +580,7 @@ body.skaerm .hjul .omgang + .fvare{border-top:none}
     const q=norm(($("addInput")||{}).value||"");
     if(!q){ $("ofte").innerHTML=""; $("ofte").classList.add("hidden"); $("ofte").parentNode.classList.remove("aaben"); return; }
     const paa=new Set(alle("vare").filter(v=>!v.taget).map(v=>norm(v.navn)));
-    const score=h=>{ const n=norm(h.navn); return n.startsWith(q)?3:n.split(" ").some(w=>w.startsWith(q))?2:n.includes(q)?1:0; };
+    const score=h=>{ const n=norm(h.navn); return n.startsWith(q)?3:n.split(" ").some(w=>w.startsWith(q))?2:0; }; // kun ord der STARTER med det skrevne
     const l=alle("historik").filter(h=>(h.n||0)>0&&!paa.has(norm(h.navn))&&norm(h.navn)!==q&&score(h)>0)
       .sort((a,b)=>score(b)-score(a)||(b.n||0)-(a.n||0)||(b.sidst||0)-(a.sidst||0)).slice(0,8);
     acValgt=-1;
@@ -1467,7 +1467,7 @@ body.skaerm .hjul .omgang + .fvare{border-top:none}
     skalerGamleBilleder(); fletAlleFrys();
   })();
   // ---------- opdatering klar ----------
-  const APPVER="1.2.6";
+  const APPVER="1.2.7";
   $("verTekst").textContent="v"+APPVER;
   let nyVer="";
   async function tjekOpdatering(){
