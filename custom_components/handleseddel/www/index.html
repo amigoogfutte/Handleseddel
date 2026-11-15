@@ -830,12 +830,17 @@ body.skaerm .hjul .omgang + .fvare{border-top:none}
     boks.innerHTML='<h3 style="font-size:14px;margin:12px 0 4px">Brugere</h3><p class="muted" style="margin:0 0 6px">Vælg hvilken husstand hver bruger hører til. Nye brugere starter med <b>Ingen</b>. Opret brugere i Home Assistant under Indstillinger → Personer.</p>'+
       j.brugere.map(b=>'<div class="row" style="align-items:center;margin:6px 0"><span class="grow">'+esc(b.navn||"(uden navn)")+'</span><select data-husbruger="'+esc(b.id)+'" style="max-width:55%">'+opts(b.husstand)+'</select></div>').join("")+
       '<h3 style="font-size:14px;margin:14px 0 4px">Husstande</h3>'+
-      j.husstande.map(h=>'<div class="row" style="align-items:center;margin:6px 0"><input class="grow" type="text" value="'+esc(h.navn)+'" data-husnavn="'+esc(h.id)+'"><button class="btn small" data-husgem="'+esc(h.id)+'">Gem</button>'+
-        (h.standard?'':'<button class="iconbtn" data-husslet="'+esc(h.id)+'" aria-label="Slet husstand">✕</button>')+'</div>').join("")+
+      j.husstande.map(h=>{ const n=j.brugere.filter(b=>b.husstand===h.id).length;
+        const info=h.standard?'Det er standard-husstanden, og den kan ikke slettes.'+(n?' '+n+' bruger'+(n>1?'e':'')+' hører til den.':'')
+          :(n?'Kan ikke slettes, fordi '+n+' bruger'+(n>1?'e':'')+' hører til den. Flyt '+(n>1?'dem':'brugeren')+' til en anden husstand eller til „Ingen“ under Brugere ovenfor – så kommer slet-krydset frem.':'');
+        return '<div class="row" style="align-items:center;margin:6px 0"><input class="grow" type="text" value="'+esc(h.navn)+'" data-husnavn="'+esc(h.id)+'"><button class="btn small" data-husgem="'+esc(h.id)+'">Gem</button>'+
+          (info?'<button class="iconbtn husinfo" data-husinfo="'+esc(h.id)+'" aria-label="Hvorfor kan den ikke slettes?">ⓘ</button>':'<button class="iconbtn" data-husslet="'+esc(h.id)+'" aria-label="Slet husstand">✕</button>')+'</div>'+
+          (info?'<p class="muted hidden" data-husinfotekst="'+esc(h.id)+'" style="margin:-2px 0 8px;font-size:13px">'+esc(info)+'</p>':''); }).join("")+
       '<div class="row" style="margin-top:10px"><input class="grow" type="text" id="husNy" placeholder="Ny husstand, fx Nannas lejlighed"><button class="btn small" id="husOpret">Opret</button></div>';
-    boks.querySelectorAll("[data-husbruger]").forEach(sl=>sl.onchange=async()=>{ if(await husKald({handling:"tildel",bruger:sl.dataset.husbruger,husstand:sl.value})) toast("Gemt"); });
+    boks.querySelectorAll("[data-husbruger]").forEach(sl=>sl.onchange=async()=>{ if(await husKald({handling:"tildel",bruger:sl.dataset.husbruger,husstand:sl.value})){ toast("Gemt"); visHusstande(); } });
     boks.querySelectorAll("[data-husgem]").forEach(b=>b.onclick=async()=>{ const id=b.dataset.husgem, inp=boks.querySelector('[data-husnavn="'+id+'"]');
       if(await husKald({handling:"omdoeb",id,navn:inp.value})){ toast("Gemt"); if(id===HUSSTAND) saetHusstand(id,inp.value.trim()); } });
+    boks.querySelectorAll("[data-husinfo]").forEach(b=>b.onclick=()=>{ const t=boks.querySelector('[data-husinfotekst="'+b.dataset.husinfo+'"]'); if(t) t.classList.toggle("hidden"); });
     boks.querySelectorAll("[data-husslet]").forEach(b=>b.onclick=async()=>{ if(!confirm("Slet husstanden? Dens data gemmes som sikkerhedskopi på Home Assistant.")) return; if(await husKald({handling:"slet",id:b.dataset.husslet})) visHusstande(); });
     $("husOpret").onclick=async()=>{ const n=$("husNy").value.trim(); if(!n) return; if(await husKald({handling:"opret",navn:n})){ toast("Husstand oprettet"); visHusstande(); } };
   }
@@ -1408,7 +1413,7 @@ body.skaerm .hjul .omgang + .fvare{border-top:none}
     skalerGamleBilleder(); fletAlleFrys();
   })();
   // ---------- opdatering klar ----------
-  const APPVER="1.2.1";
+  const APPVER="1.2.2";
   $("verTekst").textContent="v"+APPVER;
   let nyVer="";
   async function tjekOpdatering(){
