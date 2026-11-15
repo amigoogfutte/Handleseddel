@@ -43,9 +43,9 @@ class Store:
     den udgave af en post, der senest er ændret. Slettede poster gemmes som {"deleted": true}.
     """
 
-    def __init__(self, root: str) -> None:
+    def __init__(self, root: str, filnavn: str = "data.json") -> None:
         self.root = Path(root)
-        self.fil = self.root / "data.json"
+        self.fil = self.root / filnavn
         self._laas = threading.Lock()
 
     def ensure(self) -> None:
@@ -110,6 +110,140 @@ class Store:
         os.replace(tmp, f)
 
 
+STANDARD_HUSSTAND = "hjem"
+
+
+class Husstande:
+    """Flere husstande på samme Home Assistant. Hver husstand har sit eget lager.
+
+    /config/handleseddel/husstande.json: {"husstande": {id: {"navn": ...}}, "brugere": {user_id: husstand_id}}
+    Standard-husstanden ("hjem") bruger data.json, så eksisterende data bliver, hvor de er.
+    Brugere, der ikke er knyttet til en husstand, hører til standard-husstanden.
+    """
+
+    def __init__(self, root: str, standard: Store) -> None:
+        self.root = Path(root)
+        self.fil = self.root / "husstande.json"
+        self._laas = threading.Lock()
+        self._stores: dict[str, Store] = {STANDARD_HUSSTAND: standard}
+
+    def laes(self) -> dict:
+        try:
+            d = json.loads(self.fil.read_text(encoding="utf-8")) if self.fil.exists() else {}
+        except (OSError, ValueError):
+            d = {}
+        if not isinstance(d, dict):
+            d = {}
+        d.setdefault("husstande", {})
+        d.setdefault("brugere", {})
+        d["husstande"].setdefault(STANDARD_HUSSTAND, {"navn": "Rønningevej 12"})
+        return d
+
+    def _skriv(self, d: dict) -> None:
+        tmp = self.fil.with_suffix(".json.tmp")
+        tmp.write_text(json.dumps(d, ensure_ascii=False), encoding="utf-8")
+        os.replace(tmp, self.fil)
+
+    def for_bruger(self, user_id: str | None) -> tuple[str, str]:
+        d = self.laes()
+        hid = d["brugere"].get(user_id or "", STANDARD_HUSSTAND)
+        if hid not in d["husstande"]:
+            hid = STANDARD_HUSSTAND
+        return hid, d["husstande"][hid].get("navn", hid)
+
+    def store(self, hid: str) -> Store:
+        if hid not in self._stores:
+            self._stores[hid] = Store(str(self.root), f"data-{hid}.json")
+        return self._stores[hid]
+
+    def store_for(self, user) -> tuple[str, Store]:
+        hid, _ = self.for_bruger(getattr(user, "id", None))
+        return hid, self.store(hid)
+
+    def aendr(self, handling: str, obj: dict) -> dict:
+        with self._laas:
+            d = self.laes()
+            if handling == "opret":
+                navn = str(obj.get("navn") or "").strip()[:60]
+                if not navn:
+                    raise ValueError("Skriv et navn")
+                base = re.sub(r"[^a-z0-9]+", "-", navn.lower().replace("æ", "ae").replace("ø", "oe").replace("å", "aa")).strip("-")[:30] or "husstand"
+                hid, n = base, 2
+                while hid in d["husstande"]:
+                    hid, n = f"{base}-{n}", n + 1
+                d["husstande"][hid] = {"navn": navn}
+            elif handling == "omdoeb":
+                hid = obj.get("id")
+                navn = str(obj.get("navn") or "").strip()[:60]
+                if hid not in d["husstande"] or not navn:
+                    raise ValueError("Ukendt husstand")
+                d["husstande"][hid]["navn"] = navn
+            elif handling == "tildel":
+                uid, hid = obj.get("bruger"), obj.get("husstand")
+                if not isinstance(uid, str) or hid not in d["husstande"]:
+                    raise ValueError("Ukendt bruger eller husstand")
+                if hid == STANDARD_HUSSTAND:
+                    d["brugere"].pop(uid, None)
+                else:
+                    d["brugere"][uid] = hid
+            elif handling == "slet":
+                hid = obj.get("id")
+                if hid == STANDARD_HUSSTAND or hid not in d["husstande"]:
+                    raise ValueError("Kan ikke slettes")
+                if hid in d["brugere"].values():
+                    raise ValueError("Flyt først brugerne til en anden husstand")
+                del d["husstande"][hid]  # data-<id>.json bliver liggende som sikkerhedskopi
+            else:
+                raise ValueError("Ukendt handling")
+            self._skriv(d)
+            return d
+
+
+class HusstandView(HomeAssistantView):
+    """Kun administrator. GET: husstande og brugere. POST {"handling": ..., ...}: ret."""
+
+    url = "/api/handleseddel/husstande"
+    name = "api:handleseddel:husstande"
+    requires_auth = True
+
+    def __init__(self, hass: HomeAssistant, hus: Husstande) -> None:
+        self.hass = hass
+        self.hus = hus
+
+    async def _svar(self, d: dict) -> web.Response:
+        users = await self.hass.auth.async_get_users()
+        brugere = [
+            {"id": u.id, "navn": u.name or "", "husstand": d["brugere"].get(u.id, STANDARD_HUSSTAND) if d["brugere"].get(u.id) in d["husstande"] else STANDARD_HUSSTAND}
+            for u in users
+            if not u.system_generated and u.is_active
+        ]
+        husstande = [{"id": k, "navn": v.get("navn", k), "standard": k == STANDARD_HUSSTAND} for k, v in d["husstande"].items()]
+        return self.json({"husstande": husstande, "brugere": sorted(brugere, key=lambda b: b["navn"].lower())})
+
+    async def get(self, request: web.Request) -> web.Response:
+        user = request.get("hass_user")
+        if not (user and user.is_admin):
+            return self.json_message("Kun administrator", 403)
+        d = await self.hass.async_add_executor_job(self.hus.laes)
+        return await self._svar(d)
+
+    async def post(self, request: web.Request) -> web.Response:
+        user = request.get("hass_user")
+        if not (user and user.is_admin):
+            return self.json_message("Kun administrator", 403)
+        try:
+            obj = await request.json()
+        except ValueError:
+            return self.json_message("Ugyldig JSON", 400)
+        if not isinstance(obj, dict):
+            return self.json_message("Forkert indhold", 400)
+        try:
+            d = await self.hass.async_add_executor_job(self.hus.aendr, str(obj.get("handling") or ""), obj)
+        except ValueError as err:
+            return self.json_message(str(err), 400)
+        return await self._svar(d)
+
+
 class SyncView(HomeAssistantView):
     """GET: alle poster. POST {"poster":[...]}: flet ind og få alle poster tilbage."""
 
@@ -117,13 +251,14 @@ class SyncView(HomeAssistantView):
     name = "api:handleseddel:sync"
     requires_auth = True
 
-    def __init__(self, hass: HomeAssistant, store: Store) -> None:
+    def __init__(self, hass: HomeAssistant, hus: Husstande) -> None:
         self.hass = hass
-        self.store = store
+        self.hus = hus
 
     async def get(self, request: web.Request) -> web.Response:
-        data = await self.hass.async_add_executor_job(self.store.sync, [])
-        return self.json({"poster": list(data.values())})
+        hid, store = await self.hass.async_add_executor_job(self.hus.store_for, request.get("hass_user"))
+        data = await self.hass.async_add_executor_job(store.sync, [])
+        return self.json({"poster": list(data.values()), "husstand": hid})
 
     async def post(self, request: web.Request) -> web.Response:
         body = await request.read()
@@ -138,8 +273,12 @@ class SyncView(HomeAssistantView):
             return self.json_message("Forkert indhold", 400)
         user = request.get("hass_user")
         admin = bool(user and user.is_admin)
-        data = await self.hass.async_add_executor_job(lambda: self.store.sync(poster, admin=admin))
-        return self.json({"poster": list(data.values())})
+        hid, store = await self.hass.async_add_executor_job(self.hus.store_for, user)
+        # Har enheden data fra en anden husstand (fx efter skift af bruger), må de ikke blandes ind.
+        if isinstance(obj.get("husstand"), str) and obj["husstand"] and obj["husstand"] != hid:
+            return self.json({"husstand": hid, "skift": True}, 409)
+        data = await self.hass.async_add_executor_job(lambda: store.sync(poster, admin=admin))
+        return self.json({"poster": list(data.values()), "husstand": hid})
 
 
 # --- import fra Home Assistants egne lister (todo) ---
@@ -183,11 +322,16 @@ class ImportView(HomeAssistantView):
     name = "api:handleseddel:importer"
     requires_auth = True
 
-    def __init__(self, hass: HomeAssistant, store: Store) -> None:
+    def __init__(self, hass: HomeAssistant, hus: Husstande) -> None:
         self.hass = hass
-        self.store = store
+        self.hus = hus
 
     async def post(self, request: web.Request) -> web.Response:
+        hid, store = await self.hass.async_add_executor_job(self.hus.store_for, request.get("hass_user"))
+        if hid != STANDARD_HUSSTAND:
+            # Home Assistants egne lister hører til standard-husstanden – andre husstande starter tomme.
+            data = await self.hass.async_add_executor_job(store.sync, [])
+            return self.json({"skuffer": 0, "fryser": 0, "seddel": 0, "poster": list(data.values())})
         nu = int(time.time() * 1000)
         poster: list[dict] = []
         skuffer = fryser = seddel = 0
@@ -229,7 +373,7 @@ class ImportView(HomeAssistantView):
                     poster.append({"id": _rent_id("v-", it.get("uid") or n), "kind": "vare", "navn": n,
                                    "taget": False, "oprettet": nu, "updated": nu})
                     seddel += 1
-        data = await self.hass.async_add_executor_job(lambda: self.store.sync(poster, kun_nye=True))
+        data = await self.hass.async_add_executor_job(lambda: store.sync(poster, kun_nye=True))
         return self.json({"skuffer": skuffer, "fryser": fryser, "seddel": seddel, "poster": list(data.values())})
 
 
@@ -507,9 +651,15 @@ class MigView(HomeAssistantView):
     name = "api:handleseddel:mig"
     requires_auth = True
 
+    def __init__(self, hass: HomeAssistant, hus: Husstande) -> None:
+        self.hass = hass
+        self.hus = hus
+
     async def get(self, request: web.Request) -> web.Response:
         user = request.get("hass_user")
-        return self.json({"navn": getattr(user, "name", "") or "", "admin": bool(user and user.is_admin)})
+        hid, navn = await self.hass.async_add_executor_job(self.hus.for_bruger, getattr(user, "id", None))
+        return self.json({"navn": getattr(user, "name", "") or "", "admin": bool(user and user.is_admin),
+                          "husstand": hid, "husstandNavn": navn})
 
 class AppRedirectView(HomeAssistantView):
     """Kort adresse: /handleseddel-start → appen."""
@@ -532,7 +682,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         # HTTP-ruter kan ikke fjernes igen, så de registreres kun én gang pr. opstart.
         await hass.http.async_register_static_paths([StaticPathConfig(APP_URL, str(WWW), False)])
         tilbud = Tilbud(hass, store)
-        for view in (SyncView(hass, store), ImportView(hass, store), TilbudView(tilbud), LaesView(hass), MigView(), AppRedirectView()):
+        hus = Husstande(hass.config.path(STORAGE_DIR), store)
+        for view in (SyncView(hass, hus), ImportView(hass, hus), TilbudView(tilbud), LaesView(hass), MigView(hass, hus),
+                     HusstandView(hass, hus), AppRedirectView()):
             hass.http.register_view(view)
         data["http_registered"] = True
 

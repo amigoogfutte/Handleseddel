@@ -256,7 +256,13 @@ body.skaerm .hjul .omgang + .fvare{border-top:none}
   const BUTIKKER={rema:"Rema 1000",netto:"Netto",brugsen:"Brugsen"};
   // Kun administratorer må oprette/rette "Mine tilbud" – alle kan se dem
   let ADMIN=localStorage.getItem("hs_admin")!=="0";
-  async function hentMig(){ if(!HA) return; try{ const j=await api("mig"); ADMIN=!!j.admin; try{ localStorage.setItem("hs_admin",ADMIN?"1":"0"); }catch(e){} render(); }catch(e){} }
+  // ---------- husstande: hver husstand har sin egen seddel og fryser ----------
+  let HUSSTAND=localStorage.getItem("hs_husstand")||"", HUSNAVN=localStorage.getItem("hs_husnavn")||"";
+  function saetHusstand(id,navn){ HUSSTAND=id; if(navn) HUSNAVN=navn; try{ localStorage.setItem("hs_husstand",id); if(navn) localStorage.setItem("hs_husnavn",navn); }catch(e){} }
+  function rydLokalt(){ db={records:{},dirty:[]}; persist(); try{ localStorage.removeItem("hs_importeret"); }catch(e){} }
+  async function hentMig(){ if(!HA) return; try{ const j=await api("mig"); ADMIN=!!j.admin; try{ localStorage.setItem("hs_admin",ADMIN?"1":"0"); }catch(e){}
+      if(j.husstand){ const skift=(HUSSTAND&&j.husstand!==HUSSTAND)||(!HUSSTAND&&j.husstand!=="hjem"&&Object.keys(db.records).length>0); saetHusstand(j.husstand,j.husstandNavn); if(skift){ rydLokalt(); sync(); } }
+      render(); }catch(e){} }
   const butikNavn=t=>BUTIKKER[t.butik]||t.butikNavn||"Anden butik";
   const tal=n=>{ const v=Math.round((+n||0)*100)/100; return String(v).replace(".",","); };
   const kr=n=>n==null?"":(Math.round(n*100)%100? (n.toFixed(2).replace(".",",")) : String(Math.round(n)))+" kr";
@@ -318,7 +324,7 @@ body.skaerm .hjul .omgang + .fvare{border-top:none}
     try{ saetServerTid(r.headers.get("Date")); }catch(e){}
     if(r.status===401&&!retried) return api(path,opts,true);
     if(r.status===401){ authSet(null); const e=new Error("login"); e.login=true; throw e; }
-    if(!r.ok){ const e=new Error("server "+r.status); throw e; }
+    if(!r.ok){ const e=new Error("server "+r.status); e.status=r.status; try{ e.data=await r.json(); }catch(x){} throw e; }
     return r.json();
   }
 
@@ -344,13 +350,15 @@ body.skaerm .hjul .omgang + .fvare{border-top:none}
     try{
       const poster=db.dirty.map(id=>db.records[id]).filter(Boolean);
       const sendt={}; poster.forEach(p=>{ sendt[p.id]=p.updated||0; });
-      const j=await api("sync",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({poster})});
+      const j=await api("sync",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({poster,husstand:HUSSTAND||undefined})});
+      if(j.husstand&&j.husstand!==HUSSTAND){ const skift=!!HUSSTAND||j.husstand!=="hjem"; saetHusstand(j.husstand); if(skift) rydLokalt(); }
       flet(j.poster);
       // behold kun ændringer, der er lavet mens vi ventede på svar
       db.dirty=db.dirty.filter(id=>!(id in sendt)||((db.records[id]||{}).updated||0)>sendt[id]);
       persist();
       syncState={status:"ok",last:Date.now()}; try{ localStorage.setItem("hs_lastSync",String(syncState.last)); }catch(e){}
     }catch(e){
+      if(e.status===409&&e.data&&e.data.husstand){ saetHusstand(e.data.husstand); rydLokalt(); igen=true; return; }
       syncState.status=e.login?"login":(navigator.onLine===false||e instanceof TypeError?"offline":"error");
     }finally{
       syncing=false; render();
@@ -811,10 +819,29 @@ body.skaerm .hjul .omgang + .fvare{border-top:none}
 
   // ---------- indstillinger ----------
   $("indstBtn").onclick=visIndst;
+  async function husKald(obj){ try{ const j=await api("husstande",obj?{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(obj)}:{}); return j; }
+    catch(e){ toast((e.data&&e.data.message)||"Kunne ikke gemme"); return null; } }
+  async function visHusstande(){
+    const j=await husKald(); const boks=$("husBoks"); if(!boks||!j) return;
+    const opts=sel=>j.husstande.map(h=>'<option value="'+esc(h.id)+'"'+(h.id===sel?" selected":"")+'>'+esc(h.navn)+'</option>').join("");
+    boks.innerHTML='<h3 style="font-size:14px;margin:12px 0 4px">Brugere</h3><p class="muted" style="margin:0 0 6px">Vælg hvilken husstand hver bruger hører til. Opret brugere i Home Assistant under Indstillinger → Personer.</p>'+
+      j.brugere.map(b=>'<div class="row" style="align-items:center;margin:6px 0"><span class="grow">'+esc(b.navn||"(uden navn)")+'</span><select data-husbruger="'+esc(b.id)+'" style="max-width:55%">'+opts(b.husstand)+'</select></div>').join("")+
+      '<h3 style="font-size:14px;margin:14px 0 4px">Husstande</h3>'+
+      j.husstande.map(h=>'<div class="row" style="align-items:center;margin:6px 0"><input class="grow" type="text" value="'+esc(h.navn)+'" data-husnavn="'+esc(h.id)+'"><button class="btn small" data-husgem="'+esc(h.id)+'">Gem</button>'+
+        (h.standard?'':'<button class="iconbtn" data-husslet="'+esc(h.id)+'" aria-label="Slet husstand">✕</button>')+'</div>').join("")+
+      '<div class="row" style="margin-top:10px"><input class="grow" type="text" id="husNy" placeholder="Ny husstand, fx Nannas lejlighed"><button class="btn small" id="husOpret">Opret</button></div>';
+    boks.querySelectorAll("[data-husbruger]").forEach(sl=>sl.onchange=async()=>{ if(await husKald({handling:"tildel",bruger:sl.dataset.husbruger,husstand:sl.value})) toast("Gemt"); });
+    boks.querySelectorAll("[data-husgem]").forEach(b=>b.onclick=async()=>{ const id=b.dataset.husgem, inp=boks.querySelector('[data-husnavn="'+id+'"]');
+      if(await husKald({handling:"omdoeb",id,navn:inp.value})){ toast("Gemt"); if(id===HUSSTAND) saetHusstand(id,inp.value.trim()); } });
+    boks.querySelectorAll("[data-husslet]").forEach(b=>b.onclick=async()=>{ if(!confirm("Slet husstanden? Dens data gemmes som sikkerhedskopi på Home Assistant.")) return; if(await husKald({handling:"slet",id:b.dataset.husslet})) visHusstande(); });
+    $("husOpret").onclick=async()=>{ const n=$("husNy").value.trim(); if(!n) return; if(await husKald({handling:"opret",navn:n})){ toast("Husstand oprettet"); visHusstande(); } };
+  }
   function visIndst(){
     const s=indst(); const b=s.butikker||{};
     const sk=skuffer();
     aabenArk('<h2>Indstillinger</h2>'+
+      (HA?'<div class="card"><h2 style="font-size:16px">Husstand</h2><p style="margin:4px 0">Du hører til <b>'+esc(HUSNAVN||"Rønningevej 12")+'</b>. Du ser kun husstandens egen seddel og fryser.</p>'+
+        (ADMIN?'<div id="husBoks"><p class="muted">Henter husstande …</p></div>':'')+'</div>':'')+
       '<div class="card"><h2 style="font-size:16px">Butikker med tilbud</h2>'+Object.keys(BUTIKKER).map(k=>'<label class="toggle">'+BUTIKKER[k]+'<input type="checkbox" data-butik="'+k+'"'+(b[k]!==false?" checked":"")+'></label>').join("")+
       '<button class="btn small" id="tFrisk" style="margin-top:8px">Hent tilbud igen</button></div>'+
       '<div class="card"><h2 style="font-size:16px">Fast lager</h2><p class="muted">Varer I altid vil have i fryseren. Kommer der færre end minimum, sættes de automatisk på sedlen.</p>'+
@@ -835,6 +862,7 @@ body.skaerm .hjul .omgang + .fvare{border-top:none}
       const nu=Date.now(); l.forEach(f=>put(Object.assign({},f,{deleted:true,slettet:nu})));
       lukArk(); toast(l.length+" varer fjernet",()=>l.forEach(f=>{ const ny=Object.assign({},f); delete ny.deleted; delete ny.slettet; put(ny); }));
     };
+    if(HA&&ADMIN) visHusstande();
     $("lagerTilf").onclick=()=>{ const n=$("lagerNavn").value.trim(), m=parseFloat(String($("lagerMin").value).replace(",","."))||0; if(!n||m<=0) return;
       laer("frys",n,{min:m}); tjekLager(n); visIndst(); };
     document.querySelectorAll("[data-lagerslet]").forEach(b=>b.onclick=()=>{ laer("frys",b.dataset.lagerslet,{min:0}); visIndst(); });
@@ -1377,7 +1405,7 @@ body.skaerm .hjul .omgang + .fvare{border-top:none}
     skalerGamleBilleder(); fletAlleFrys();
   })();
   // ---------- opdatering klar ----------
-  const APPVER="1.1.1";
+  const APPVER="1.2.0";
   $("verTekst").textContent="v"+APPVER;
   let nyVer="";
   async function tjekOpdatering(){
