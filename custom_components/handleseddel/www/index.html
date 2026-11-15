@@ -1478,7 +1478,7 @@ body.skaerm .hjul .omgang + .fvare{border-top:none}
     skalerGamleBilleder(); fletAlleFrys();
   })();
   // ---------- opdatering klar ----------
-  const APPVER="1.3.3";
+  const APPVER="1.3.4";
   $("verTekst").textContent="v"+APPVER;
   let nyVer="";
   async function tjekOpdatering(){
@@ -1488,14 +1488,19 @@ body.skaerm .hjul .omgang + .fvare{border-top:none}
   // Sammenlign versioner som tal: "1.2.10" > "1.2.9"
   function verCmp(a,b){ const x=String(a||"").split(".").map(n=>+n||0), y=String(b||"").split(".").map(n=>+n||0);
     for(let i=0;i<Math.max(x.length,y.length);i++){ if((x[i]||0)!==(y[i]||0)) return (x[i]||0)>(y[i]||0)?1:-1; } return 0; }
+  // Hvert trin må højst tage lidt tid – ellers hænger knappen på iPhone (fx når service worker-opdatering ikke svarer)
+  const medTid=(p,ms)=>Promise.race([Promise.resolve(p).catch(()=>{}),new Promise(r=>setTimeout(r,ms))]);
   async function opdater(til,forsoeg,haardt){
     try{ localStorage.setItem("hs_opd",JSON.stringify({fra:APPVER,til:til||"",forsoeg})); }catch(e){}
-    try{ if(window.caches){ const k=await caches.keys(); await Promise.all(k.map(x=>caches.delete(x))); } }catch(e){}
-    try{ if(navigator.serviceWorker){ const regs=await navigator.serviceWorker.getRegistrations();
-      await Promise.all(regs.map(r=>haardt?r.unregister().catch(()=>{}):r.update().catch(()=>{}))); } }catch(e){}
+    const maal=location.pathname+"?v="+encodeURIComponent(til||Date.now())+"&r="+Date.now();
+    let gaaet=false; const gaa=()=>{ if(gaaet) return; gaaet=true; location.replace(maal); };
+    setTimeout(gaa,4000); // sikkerhedsnet: genindlæs under alle omstændigheder efter 4 sek.
+    await medTid((async()=>{ if(window.caches){ const k=await caches.keys(); await Promise.all(k.map(x=>caches.delete(x))); } })(),1500);
+    await medTid((async()=>{ if(navigator.serviceWorker){ const regs=await navigator.serviceWorker.getRegistrations();
+      await Promise.all(regs.map(r=>haardt?r.unregister():r.update())); } })(),1500);
     // Hent den nye side uden om browserens cache (ellers kan den gamle udgave komme igen)
-    try{ await fetch(location.pathname,{cache:"reload"}); }catch(e){}
-    location.replace(location.pathname+"?v="+encodeURIComponent(til||Date.now())+(haardt?"&r="+Date.now():""));
+    await medTid(fetch(location.pathname,{cache:"reload"}),1500);
+    gaa();
   }
   $("opdBanner").onclick=()=>{ $("opdBanner").textContent="Opdaterer …"; opdater(nyVer,1,false); };
   // Efter genindlæsning: blev appen faktisk opdateret? Ellers prøv igen (højst 3 gange)
