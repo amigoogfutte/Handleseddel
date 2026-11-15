@@ -188,7 +188,7 @@ body.skaerm .hjul .omgang + .fvare{border-top:none}
   <section id="v-seddel">
     <form class="add" id="addForm" autocomplete="off">
       <div class="row">
-        <input class="grow" type="text" id="addInput" placeholder="Tilføj vare …" list="forslag" enterkeyhint="done">
+        <input class="grow" type="text" id="addInput" placeholder="Tilføj vare …" enterkeyhint="done" autocomplete="off">
         <button class="btn primary" type="submit">Tilføj</button>
       </div>
       <datalist id="forslag"></datalist>
@@ -544,7 +544,7 @@ body.skaerm .hjul .omgang + .fvare{border-top:none}
   function billedeFor(v){ if(v.taget) return ""; const t=tilbudFor(v.navn).find(x=>x.egen&&x.billede); return t?t.billede:""; }
   function fAntal(f){ if((!f.enhed||f.enhed==="stk")&&f.antal===1&&/\d/.test(f.navn)) return f.navn; return tal(f.antal)+" "+flertal(f.enhed,f.antal)+" "+f.navn; }
 
-  $("addForm").onsubmit=e=>{ e.preventDefault(); const n=$("addInput").value.trim(); if(!n) return; tilfoejVare(n); $("addInput").value=""; };
+  $("addForm").onsubmit=e=>{ e.preventDefault(); const n=$("addInput").value.trim(); if(!n) return; tilfoejVare(n); $("addInput").value=""; renderOfte(); };
   function tilfoejVare(n){
     const findes=alle("vare").find(v=>!v.taget&&norm(v.navn)===norm(n));
     if(findes){ toast(n+" står allerede på sedlen"); return; }
@@ -568,13 +568,18 @@ body.skaerm .hjul .omgang + .fvare{border-top:none}
   // Husker varer og hvor tit de bliver købt, så de oftest købte kan tilføjes med ét tryk.
   function husk(navn,koebt){ const id="h-"+norm(navn).replace(/ /g,"_").slice(0,100); if(id.length<4) return;
     const h=get(id)||{id,kind:"historik",navn,n:0}; if(koebt){ h.n=(h.n||0)+1; h.sidst=Date.now(); h.navn=navn; put(h); } else if(!get(id)) put(h); }
+  // Forslag kommer først, når man skriver – de varer I køber mest, der passer til det skrevne
   function renderOfte(){
+    const q=norm(($("addInput")||{}).value||"");
+    if(!q){ $("ofte").innerHTML=""; return; }
     const paa=new Set(alle("vare").filter(v=>!v.taget).map(v=>norm(v.navn)));
-    const l=alle("historik").filter(h=>(h.n||0)>0&&!paa.has(norm(h.navn)))
-      .sort((a,b)=>(b.n||0)-(a.n||0)||(b.sidst||0)-(a.sidst||0)).slice(0,10);
+    const score=h=>{ const n=norm(h.navn); return n.startsWith(q)?3:n.split(" ").some(w=>w.startsWith(q))?2:n.includes(q)?1:0; };
+    const l=alle("historik").filter(h=>(h.n||0)>0&&!paa.has(norm(h.navn))&&norm(h.navn)!==q&&score(h)>0)
+      .sort((a,b)=>score(b)-score(a)||(b.n||0)-(a.n||0)||(b.sidst||0)-(a.sidst||0)).slice(0,8);
     $("ofte").innerHTML=l.map(h=>'<span class="pille ofte" data-ofte="'+esc(h.navn)+'">+ '+esc(h.navn)+'</span>').join("");
   }
-  document.addEventListener("click",e=>{ const b=e.target.closest("[data-ofte]"); if(!b) return; tilfoejVare(b.dataset.ofte); });
+  document.addEventListener("click",e=>{ const b=e.target.closest("[data-ofte]"); if(!b) return; tilfoejVare(b.dataset.ofte); const i=$("addInput"); i.value=""; renderOfte(); i.focus(); });
+  $("addInput").addEventListener("input",renderOfte);
   // Fælles hukommelse for alle enheder: sidste enhed/antal pr. fryservare og sidste værdier pr. eget tilbud.
   function laering(){ return get("laering")||{id:"laering",kind:"laering",frys:{},tilbud:{}}; }
   function laer(del2,navn,val){ const r=laering(); r[del2]=r[del2]||{}; r[del2][norm(navn)]=Object.assign({},del2==="frys"?(r[del2][norm(navn)]||{}):{},val,{navn,t:Date.now()});
@@ -1445,7 +1450,7 @@ body.skaerm .hjul .omgang + .fvare{border-top:none}
     skalerGamleBilleder(); fletAlleFrys();
   })();
   // ---------- opdatering klar ----------
-  const APPVER="1.2.4";
+  const APPVER="1.2.5";
   $("verTekst").textContent="v"+APPVER;
   let nyVer="";
   async function tjekOpdatering(){
