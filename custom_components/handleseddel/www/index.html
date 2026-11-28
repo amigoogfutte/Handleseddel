@@ -212,7 +212,7 @@ body.skaerm .hjul .omgang + .fvare{border-top:none}
       <datalist id="mineForslag"></datalist>
     </form>
     <div class="card" id="seddelKort"><div id="seddelListe"></div></div>
-    <div class="knapper" style="display:flex;margin-top:12px"><button class="btn" id="kopierBtn" style="flex:1">📋 Kopiér handleseddel</button></div>
+    <div class="knapper" style="display:flex;gap:8px;margin-top:12px"><button class="btn" id="mestBtn" style="flex:1">☑︎ Mest brugte</button><button class="btn" id="kopierBtn" style="flex:1">📋 Kopiér</button></div>
     <div class="card hidden" id="kurvKort">
       <div class="sekhead"><h2 id="kurvTitel">I kurven</h2><button class="btn small" id="rydBtn">Ryd</button></div>
       <div id="kurvListe"></div>
@@ -531,6 +531,7 @@ body.skaerm .hjul .omgang + .fvare{border-top:none}
     const lt=laering().tilbud||{};
     $("mineForslag").innerHTML=Object.values(lt).sort((a,b)=>b.t-a.t).map(x=>'<option value="'+esc(x.navn)+'">').join("");
     renderOfte();
+    $("mestBtn").classList.toggle("hidden",!mestBrugte().length);
     const b=indst().butikker||{}; const valgte=Object.keys(BUTIKKER).filter(k=>b[k]!==false).map(k=>BUTIKKER[k]);
     $("tilbudInfo").textContent=HA?(tilbudHentet?"Tilbud fra "+valgte.join(", ")+" · hentet "+new Date(tilbudHentet).toLocaleString("da-DK",{timeZone:TZ,weekday:"short",hour:"2-digit",minute:"2-digit"}):"Henter tilbud …"):"";
   }
@@ -588,6 +589,27 @@ body.skaerm .hjul .omgang + .fvare{border-top:none}
   // Husker varer og hvor tit de bliver købt, så de oftest købte kan tilføjes med ét tryk.
   function husk(navn,koebt){ const id="h-"+norm(navn).replace(/ /g,"_").slice(0,100); if(id.length<4) return;
     const h=get(id)||{id,kind:"historik",navn,n:0}; if(koebt){ h.n=(h.n||0)+1; h.sidst=Date.now(); h.navn=navn; put(h); } else if(!get(id)) put(h); }
+  // De mest købte varer (antal vælges under ⚙︎) – sæt flueben og læg dem på sedlen på én gang
+  function mestAntal(){ const n=indst().mestBrugte; return n===undefined?20:+n||0; }
+  function mestBrugte(){ const n=mestAntal(); if(!n) return [];
+    return alle("historik").filter(h=>(h.n||0)>0).sort((a,b)=>(b.n||0)-(a.n||0)||(b.sidst||0)-(a.sidst||0)).slice(0,n); }
+  function visMestBrugte(){
+    const l=mestBrugte(); const paa=new Set(alle("vare").filter(v=>!v.taget).map(v=>norm(v.navn)));
+    const grp=l.map(h=>({h,g:gruppeFor(h.navn)})).sort((a,b)=>grIdx(a.g)-grIdx(b.g)||a.h.navn.localeCompare(b.h.navn,"da"));
+    let html="", sidst=null;
+    grp.forEach(({h,g})=>{ if(g!==sidst){ html+='<div class="gruppehead">'+esc(GRUPPER[grIdx(g)].navn)+'</div>'; sidst=g; }
+      const er=paa.has(norm(h.navn));
+      html+='<label class="toggle"><span>'+esc(h.navn)+'<span class="muted" style="display:block;font-size:13px">'+(er?'Står allerede på sedlen':'Købt '+(h.n||0)+' gange')+'</span></span>'+
+        '<input type="checkbox" data-mest="'+esc(h.navn)+'"'+(er?' checked disabled':'')+'></label>'; });
+    aabenArk('<h2>Mest brugte ('+l.length+')</h2><p class="muted" style="margin:0 0 6px">Sæt flueben ved det, I mangler, og tryk på knappen nederst. Antallet vælges under ⚙︎.</p>'+html+
+      '<div class="knapper"><button class="btn" id="lukA">Luk</button><button class="btn primary" id="mestTilf" disabled>Sæt på sedlen</button></div>');
+    const opd=()=>{ const n=document.querySelectorAll("[data-mest]:checked:not(:disabled)").length; const b=$("mestTilf"); b.disabled=!n; b.textContent=n?"Sæt "+n+" på sedlen":"Sæt på sedlen"; };
+    document.querySelectorAll("[data-mest]").forEach(c=>c.onchange=opd);
+    $("lukA").onclick=lukArk;
+    $("mestTilf").onclick=()=>{ const v=[...document.querySelectorAll("[data-mest]:checked:not(:disabled)")].map(c=>c.dataset.mest); if(!v.length) return;
+      v.forEach(tilfoejVare); lukArk(); toast(v.length===1?v[0]+" sat på sedlen":v.length+" varer sat på sedlen"); };
+  }
+  $("mestBtn").onclick=visMestBrugte;
   // Forslag kommer først, når man skriver – de varer I køber mest, der passer til det skrevne
   function renderOfte(){
     const q=norm(($("addInput")||{}).value||"");
@@ -892,7 +914,8 @@ body.skaerm .hjul .omgang + .fvare{border-top:none}
   const VEJLEDNING=[
     ["🛒 Handlesedlen",["Skriv en vare i feltet øverst og tryk Tilføj. Appen foreslår varer, I tit køber.",
       "Varerne sorteres efter butikkens afdelinger (grønt, mejeri, frost …). Tryk på en vare for at rette navnet eller vælge en anden varegruppe.",
-      "Sæt flueben, når varen er i kurven. „Kopiér handleseddel“ giver en liste, I kan sende til andre.",
+      "Sæt flueben, når varen er i kurven. „📋 Kopiér“ giver en liste, I kan sende til andre.",
+      "„☑︎ Mest brugte“ viser de varer, I køber oftest. Sæt flueben ved dem, I mangler, og tryk „Sæt på sedlen“. Antallet vælges under ⚙︎.",
       "Er en vare på tilbud i Rema, Netto eller Brugsen, står butik og pris ved varen. Tryk for at se tilbuddet, eller „Ikke den“, hvis det er en forkert vare."]],
     ["❄︎ Fryseren",["Varerne ligger i kurve (Øverste kurv, Bund, Til højre). Brug − og + til at tage ud og lægge i.",
       "Tryk på varens navn for at rette antal, enhed, kurv, holdbarhed, fast lager, søgeord og billede.",
@@ -925,6 +948,8 @@ body.skaerm .hjul .omgang + .fvare{border-top:none}
         (ADMIN?'<div id="husBoks"><p class="muted">Henter husstande …</p></div>':'')+'</div>':'')+
       '<div class="card"><h2 style="font-size:16px">Butikker med tilbud</h2>'+Object.keys(BUTIKKER).map(k=>'<label class="toggle">'+BUTIKKER[k]+'<input type="checkbox" data-butik="'+k+'"'+(b[k]!==false?" checked":"")+'></label>').join("")+
       '<button class="btn small" id="tFrisk" style="margin-top:8px">Hent tilbud igen</button></div>'+
+      '<div class="card"><h2 style="font-size:16px">Mest brugte</h2><p class="muted">Hvor mange af de varer, I køber oftest, der vises under „☑︎ Mest brugte“ på handlesedlen.</p>'+
+        '<label class="toggle">Antal varer<select id="mestAntal">'+[0,10,15,20,25,30,40,50].map(n=>'<option value="'+n+'"'+(n===mestAntal()?' selected':'')+'>'+(n?n:'Skjul knappen')+'</option>').join("")+'</select></label></div>'+
       '<div class="card"><h2 style="font-size:16px">Fast lager</h2><p class="muted">Varer I altid vil have i fryseren. Kommer der færre end minimum, sættes de automatisk på sedlen.</p>'+
         Object.values(laering().frys||{}).filter(l=>l.min>0).sort((a,b)=>a.navn.localeCompare(b.navn,"da")).map(l=>{ const n=iFryserAntal(l.navn);
           return '<div class="fvare'+(n<l.min?' gammel':'')+'"><div class="navn">'+esc(l.navn)+'<div class="muted">I fryseren: '+esc(tal(n))+' · mindst '+esc(tal(l.min))+'</div></div><button class="iconbtn" data-lagerslet="'+esc(l.navn)+'" aria-label="Fjern fast lager">✕</button></div>'; }).join("")+
@@ -952,6 +977,7 @@ body.skaerm .hjul .omgang + .fvare{border-top:none}
     $("lukA").onclick=()=>{ document.querySelectorAll("[data-sknavn]").forEach(i=>{ const x=get(i.dataset.sknavn); const n=i.value.trim(); if(x&&n&&n!==x.navn){ x.navn=n; put(x); } }); lukArk(); };
     document.querySelectorAll("[data-butik]").forEach(c=>c.onchange=()=>{ const s=indst(); s.butikker=Object.assign({rema:true,netto:true,brugsen:true},s.butikker||{}); s.butikker[c.dataset.butik]=c.checked; put(s); matchCache.clear(); render(); });
     $("tFrisk").onclick=()=>hentTilbud(true);
+    $("mestAntal").onchange=e=>{ const s=indst(); s.mestBrugte=+e.target.value; put(s); render(); toast(s.mestBrugte?"Viser de "+s.mestBrugte+" mest brugte":"Knappen er skjult"); };
     $("tilfSkuffe").onclick=()=>{ const n=$("nySkuffe").value.trim(); if(!n) return; const max=Math.max(-1,...skuffer().map(x=>x.orden||0)); put({id:newId("sk"),kind:"skuffe",navn:n,orden:max+1}); visIndst(); };
     document.querySelectorAll("[data-skslet]").forEach(btn=>btn.onclick=()=>{
       const x=get(btn.dataset.skslet); const n=alle("frys").filter(f=>f.skuffe===x.id).length;
@@ -1487,7 +1513,7 @@ body.skaerm .hjul .omgang + .fvare{border-top:none}
     skalerGamleBilleder(); fletAlleFrys();
   })();
   // ---------- opdatering klar ----------
-  const APPVER="1.3.8";
+  const APPVER="1.3.9";
   $("verTekst").textContent="v"+APPVER;
   let nyVer="";
   async function tjekOpdatering(){
